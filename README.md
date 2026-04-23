@@ -84,17 +84,17 @@ Manhwa / manhua live in the `manga` module. Grammar is close enough that splitti
 
 ## Test coverage
 
-- **128 unit tests**, clippy + fmt clean
-- **`corpus/manga_kavita.json`** — 350 real-world fixtures lifted from [Kavita](https://github.com/Kareadita/Kavita)'s manga parser tests (GPL-3.0, per-entry attribution). Current aggregate pass rate: **92.3%**. Per-method:
+- **145 unit tests**, clippy + fmt clean
+- **`corpus/manga_kavita.json`** — 350 real-world fixtures lifted from [Kavita](https://github.com/Kareadita/Kavita)'s manga parser tests (GPL-3.0, per-entry attribution). Current aggregate pass rate: **98.5%**. Per-method:
 
   | Method | Rate |
   |---|---|
-  | ParseVolumeTest | 97.3% |
-  | ParseDuplicateVolumeTest | 81.0% (CJK-only failures) |
-  | ParseChaptersTest | 92.3% |
+  | ParseVolumeTest | 100% |
+  | ParseDuplicateVolumeTest | 90.5% (Thai-only failures) |
+  | ParseChaptersTest | 100% |
   | ParseDuplicateChapterTest | 100% |
   | ParseExtraNumberChaptersTest | 100% |
-  | ParseSeriesTest | 89.9% |
+  | ParseSeriesTest | 97.7% (Thai-only failures) |
   | ParseEditionTest | 100% |
 
 - **`corpus/novel_nyaa.json`** — 8 hand-picked LN fixtures from Nyaa with full-struct field assertions. Current pass rate: **100%** (22/22 field asserts).
@@ -107,10 +107,11 @@ Manhwa / manhua live in the `manga` module. Grammar is close enough that splitti
 
 All documented in the module-level doc comments. The ones that show up as corpus failures:
 
-- **Thai `เล่ม`** — Ryokan's intended upstream (Nyaa English-translated) doesn't carry Thai script; supporting it would need lexer changes for Thai combining marks
+- **Thai `เล่ม` / `เล่มที่`** — Ryokan's intended upstream (Nyaa English-translated) doesn't carry Thai script; supporting it would need lexer changes for Thai combining marks and additional keyword entries. The five remaining Kavita failures are all in this bucket.
 - **X-suffix ranges** — `c001-006x1` (rare Kavita syntax)
 - **Kavita "special" empty-series cases** — filenames like `Love Hina - Special.cbz` where Kavita expects empty series; no oneshot/special detection yet
-- **Title-embedded numbers in some edge cases** — `Hentai Ouji to Warawanai Neko.` (trailing dot preserved by Kavita, stripped by us)
+
+Closed in 1.4.0: reverse-range CJK (`38-1화` → 38), `#N`-at-end chapter detection (`Episode 3 ... #02` → 2), mixed-prefix chapter range (`c01-c04` → 1-4), trailing title-dot preservation (`Hentai Ouji... Neko.`), Russian postfix Том (`5 Том Test` → vol 5).
 
 Closed in 1.2.0: Korean `시즌` multi-char prefix (`시즌34삽화2` → volume 34), alpha-suffix decimals (`Beelzebub_153b` → 153.5 per Kavita convention).
 

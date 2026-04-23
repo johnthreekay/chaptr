@@ -113,6 +113,14 @@ pub fn detect_volume(tokens: &[Token]) -> Option<NumberRange> {
 }
 
 pub fn detect_chapter(tokens: &[Token]) -> Option<NumberRange> {
+    // `#N` at end-of-filename outranks keyword-based detection when no
+    // CJK chapter marker is present. Kavita treats `Episode 3 ... #02`
+    // as chapter 2 — the hash-number carries the chapter, `Episode N` is
+    // a title-side section indicator. Guarded against CJK markers so
+    // `13회#2` still resolves via the 회 marker (chapter 13, not 2).
+    if let Some(r) = detect_hash_chapter(tokens) {
+        return Some(r);
+    }
     if let Some(r) = detect_chapter_in_seq(tokens) {
         return Some(r);
     }
@@ -132,6 +140,53 @@ pub fn detect_chapter(tokens: &[Token]) -> Option<NumberRange> {
     detect_bare_number_chapter(tokens)
 }
 
+/// `#N` chapter detection, restricted to the trailing slot of the filename.
+///
+/// Matches `<Delim('#')> <Word(digits)>` followed only by delimiters and a
+/// possible extension Word (`.cbz`, `.7z`). Earlier `#N` occurrences
+/// (`Monster #8 Ch. 001`) don't match because non-delimiter non-extension
+/// tokens follow them.
+///
+/// Returns `None` if any CJK chapter marker is present — `13회#2`
+/// resolves to 13 via CJK, not 2 via hash.
+fn detect_hash_chapter(tokens: &[Token]) -> Option<NumberRange> {
+    // Fast path: the overwhelming majority of filenames have no `#`, so
+    // scan once for the delimiter before paying the CJK-guard cost.
+    if !tokens.iter().any(|t| matches!(t, Token::Delimiter('#'))) {
+        return None;
+    }
+
+    for t in tokens {
+        if let Token::Word(w) = t
+            && find_cjk_marker_number_in_word(w, CJK_CHAPTER_MARKERS).is_some()
+        {
+            return None;
+        }
+    }
+
+    for i in 0..tokens.len() {
+        let Token::Delimiter('#') = tokens[i] else {
+            continue;
+        };
+        let Some(Token::Word(num_str)) = tokens.get(i + 1) else {
+            continue;
+        };
+        let Ok(n) = num_str.parse::<u32>() else {
+            continue;
+        };
+
+        let at_end = tokens[i + 2..].iter().all(|t| match t {
+            Token::Delimiter(_) => true,
+            Token::Word(w) => looks_like_extension(w),
+            _ => false,
+        });
+        if at_end {
+            return Some(NumberRange::single(ChapterNumber::new(n)));
+        }
+    }
+    None
+}
+
 fn detect_volume_in_seq(tokens: &[Token]) -> Option<NumberRange> {
     for (i, t) in tokens.iter().enumerate() {
         let Token::Word(w) = t else { continue };
@@ -139,7 +194,7 @@ fn detect_volume_in_seq(tokens: &[Token]) -> Option<NumberRange> {
         if let Some(num_str) = strip_volume_prefix(w)
             && let Ok(start_whole) = num_str.parse::<u32>()
         {
-            return Some(build_range(tokens, i + 1, start_whole));
+            return Some(build_range(tokens, i + 1, start_whole, false));
         }
 
         // CJK multi-char prefix: `시즌3`, `시즌34삽화2`. Leading digits
@@ -147,13 +202,66 @@ fn detect_volume_in_seq(tokens: &[Token]) -> Option<NumberRange> {
         // tail is ignored (what the corpus expects for 시즌34삽화2 — vol
         // 34, trailing 삽화2 is noise).
         if let Some(start_whole) = strip_cjk_prefix_volume(w) {
-            return Some(build_range(tokens, i + 1, start_whole));
+            return Some(build_range(tokens, i + 1, start_whole, false));
         }
 
-        if is_volume_keyword(w)
-            && let Some(range) = parse_number_after_marker(tokens, i + 1)
-        {
-            return Some(range);
+        if is_volume_keyword(w) {
+            if let Some(range) = parse_number_after_marker(tokens, i + 1, false) {
+                return Some(range);
+            }
+            // Postfix-style: `5 Том Test` (Russian). Only runs when the
+            // forward scan failed, and only for the Russian keyword —
+            // English `Vol` with no following number is overwhelmingly a
+            // title fragment, not a postfix marker.
+            if is_postfix_volume_keyword(w)
+                && let Some(range) = parse_number_before_marker(tokens, i)
+            {
+                return Some(range);
+            }
+        }
+    }
+    None
+}
+
+/// Russian `том`/`тома` is the only volume keyword the corpus uses in
+/// postfix position (`5 Том Test` → vol 5). Gating postfix detection to
+/// this narrow set avoids picking up trailing title digits for English
+/// fixtures that put `Vol` in a title (`Accel World: Vol.1` style).
+fn is_postfix_volume_keyword(word: &str) -> bool {
+    if word.is_ascii() {
+        return false;
+    }
+    let lower = word.to_lowercase();
+    matches!(lower.as_str(), "том" | "тома")
+}
+
+fn parse_number_before_marker(tokens: &[Token], marker_idx: usize) -> Option<NumberRange> {
+    // Symmetric to [`parse_number_after_marker`] but walking leftward.
+    // Same 3-delimiter cap to reject `5 ... ... Том` runs where the
+    // number isn't attached to the keyword.
+    const MAX_DELIMS: usize = 3;
+    if marker_idx == 0 {
+        return None;
+    }
+    let mut i = marker_idx;
+    let mut delims_skipped = 0usize;
+    while i > 0 {
+        i -= 1;
+        match &tokens[i] {
+            Token::Delimiter(_) => {
+                delims_skipped += 1;
+                if delims_skipped > MAX_DELIMS {
+                    return None;
+                }
+            }
+            Token::Word(num_str) => {
+                let n = num_str.parse::<u32>().ok()?;
+                if looks_like_year(n) {
+                    return None;
+                }
+                return Some(NumberRange::single(ChapterNumber::new(n)));
+            }
+            _ => return None,
         }
     }
     None
@@ -180,11 +288,11 @@ fn detect_chapter_in_seq(tokens: &[Token]) -> Option<NumberRange> {
         let Token::Word(w) = t else { continue };
 
         if let Some(start_whole) = parse_chapter_num_from_word(w) {
-            return Some(build_range(tokens, i + 1, start_whole));
+            return Some(build_range(tokens, i + 1, start_whole, true));
         }
 
         if is_chapter_keyword(w)
-            && let Some(range) = parse_number_after_marker(tokens, i + 1)
+            && let Some(range) = parse_number_after_marker(tokens, i + 1, true)
         {
             return Some(range);
         }
@@ -236,7 +344,7 @@ pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange
                     && !looks_like_year(n)
                     && bare_number_followed_by_metadata(tokens, i + 1)
                 {
-                    return Some(build_range(tokens, i + 1, n));
+                    return Some(build_range(tokens, i + 1, n, false));
                 }
 
                 // Alpha-suffix case: `153b` → 153.5 (Kavita convention).
@@ -407,7 +515,17 @@ pub(crate) fn parse_extended_number(word: &str) -> Option<ChapterNumber> {
 /// Build a [`NumberRange`] starting at `start_whole`, then optionally consume
 /// a `.<dec>` decimal suffix and an `-<num>[.<dec>]` range end from the
 /// following tokens.
-fn build_range(tokens: &[Token], cursor: usize, start_whole: u32) -> NumberRange {
+///
+/// `allow_chapter_prefix_end` = `true` lets `parse_range_end` accept a
+/// chapter-prefixed end word (`c01-c04` → 1-4). Chapter callers pass
+/// `true`; volume callers pass `false` so `v01-c001` is not misread as
+/// a volume range into a chapter word.
+fn build_range(
+    tokens: &[Token],
+    cursor: usize,
+    start_whole: u32,
+    allow_chapter_prefix_end: bool,
+) -> NumberRange {
     let mut start = ChapterNumber::new(start_whole);
     let mut next = cursor;
 
@@ -416,13 +534,17 @@ fn build_range(tokens: &[Token], cursor: usize, start_whole: u32) -> NumberRange
         next = after;
     }
 
-    let end = parse_range_end(tokens, next, start);
+    let end = parse_range_end(tokens, next, start, allow_chapter_prefix_end);
     NumberRange { start, end }
 }
 
 /// Skip up to N delimiters, then read a number-shaped Word. Used for
 /// `Vol 1` / `Vol. 1` / `Volume_01` / `Chapter 12` patterns.
-fn parse_number_after_marker(tokens: &[Token], start: usize) -> Option<NumberRange> {
+fn parse_number_after_marker(
+    tokens: &[Token],
+    start: usize,
+    allow_chapter_prefix_end: bool,
+) -> Option<NumberRange> {
     // Cap at 3 delimiters between the marker keyword and its number. The
     // common forms are:
     //   `Vol 1`    — 1 delim (space)
@@ -442,7 +564,12 @@ fn parse_number_after_marker(tokens: &[Token], start: usize) -> Option<NumberRan
             }
             Token::Word(num_str) => {
                 let start_whole = num_str.parse::<u32>().ok()?;
-                return Some(build_range(tokens, i + 1, start_whole));
+                return Some(build_range(
+                    tokens,
+                    i + 1,
+                    start_whole,
+                    allow_chapter_prefix_end,
+                ));
             }
             _ => return None,
         }
@@ -461,7 +588,12 @@ fn parse_decimal_suffix(tokens: &[Token], pos: usize) -> Option<(u16, usize)> {
     Some((dec, pos + 2))
 }
 
-fn parse_range_end(tokens: &[Token], pos: usize, start: ChapterNumber) -> Option<ChapterNumber> {
+fn parse_range_end(
+    tokens: &[Token],
+    pos: usize,
+    start: ChapterNumber,
+    allow_chapter_prefix_end: bool,
+) -> Option<ChapterNumber> {
     if !matches!(tokens.get(pos), Some(Token::Delimiter('-'))) {
         return None;
     }
@@ -469,14 +601,18 @@ fn parse_range_end(tokens: &[Token], pos: usize, start: ChapterNumber) -> Option
         return None;
     };
     // `parse_extended_number` handles bare digits, alpha-suffix (.5),
-    // and any-other-suffix (leading digits only) in one shot.
-    //
-    // An earlier revision also accepted the full `parse_chapter_num_from_word`
-    // as a fallback so ranges like `c01-c04` → 1..=4 would work, but that
-    // regressed `v01-c001[MD]` (volume-range-end matched the chapter word
-    // `c001`, producing a phantom "1-1"). The single-fixture c01-c04 win
-    // wasn't worth the cross-domain disambiguation cost.
-    let mut end = parse_extended_number(num_str)?;
+    // and any-other-suffix (leading digits only) in one shot. If the
+    // caller is a chapter detector and the plain parse fails, also
+    // accept a chapter-prefixed end word (`c01-c04`, `ch01-ch04`). This
+    // is gated off for volume callers to avoid `v01-c001[MD]` matching
+    // the chapter word as a volume range end.
+    let mut end = parse_extended_number(num_str).or_else(|| {
+        if allow_chapter_prefix_end {
+            parse_chapter_num_from_word(num_str).map(ChapterNumber::new)
+        } else {
+            None
+        }
+    })?;
     // If the end was bare digits with no alpha suffix, allow a trailing
     // `.<dec>` decimal from the following tokens (rare: `c001-008.5`).
     if end.decimal.is_none()
@@ -503,13 +639,18 @@ fn detect_cjk_marker_seq(tokens: &[Token], markers: &[char]) -> Option<NumberRan
             continue;
         };
 
-        if let Some(start_n) = preceding_range_start(tokens, i)
-            && start_n <= found_n
-        {
-            return Some(NumberRange::range(
-                ChapterNumber::new(start_n),
-                ChapterNumber::new(found_n),
-            ));
+        if let Some(start_n) = preceding_range_start(tokens, i) {
+            if start_n <= found_n {
+                return Some(NumberRange::range(
+                    ChapterNumber::new(start_n),
+                    ChapterNumber::new(found_n),
+                ));
+            }
+            // Backward range: `38-1화` reads as "chapter 38, part 1" (not
+            // a range from 38 down to 1). Kavita treats the larger
+            // leading number as the chapter; the trailing sub-part is
+            // noise from our perspective.
+            return Some(NumberRange::single(ChapterNumber::new(start_n)));
         }
 
         if let Some(combined) = preceding_decimal_combined(tokens, i, found_n) {
@@ -878,9 +1019,13 @@ fn clean_title(s: &str) -> Cow<'_, str> {
     // Notable inclusions: `_` (delimiter substitute), `,` (e.g. `Corpse Party
     // Musume,`), `#` (e.g. `Kodoja #001` slices to `Kodoja #`), `:` (e.g.
     // `Accel World:` before a `Vol` tag).
-    let trimmed = s.trim_matches(|c: char| {
-        c.is_whitespace() || matches!(c, '-' | '.' | '_' | ',' | '#' | ':')
-    });
+    //
+    // `.` is deliberately NOT trimmed: Kavita fixtures keep series titles with
+    // a trailing period intact (`Hentai Ouji to Warawanai Neko.`). The
+    // extension dot is stripped earlier in [`find_title_end`], so a dot that
+    // reaches here is title content.
+    let trimmed =
+        s.trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '_' | ',' | '#' | ':'));
     if trimmed.contains('_') {
         Cow::Owned(trimmed.replace('_', " ").trim().to_owned())
     } else {

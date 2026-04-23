@@ -1170,11 +1170,12 @@ mod tests {
     #[test]
     fn corpus_kavita_pass_rate() {
         const CORPUS: &str = include_str!("../corpus/manga_kavita.json");
-        // 1.3.0 reached ~96.9% after the first-vol-marker gate, alpha-suffix
-        // range + extension-dot metadata, sp prefix, and doujin/oneshot
-        // detection. Remaining failures are documented out-of-scope (Thai,
-        // reverse-range CJK, trailing-dot titles, cross-prefix ranges).
-        const MIN_AGGREGATE_PASS_RATE: f64 = 0.95;
+        // 1.4.0 reached ~98.5% after the reverse-range CJK rule, `#N`
+        // at-end chapter detection, mixed-prefix chapter ranges, trailing
+        // title-dot preservation, and Russian postfix Том. Remaining
+        // failures are all Thai script (เล่ม/เล่มที่) — deferred out of
+        // scope until Ryokan's upstream carries Thai filenames.
+        const MIN_AGGREGATE_PASS_RATE: f64 = 0.97;
 
         let entries: Vec<serde_json::Value> = serde_json::from_str(CORPUS).unwrap();
 
