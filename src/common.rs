@@ -206,6 +206,20 @@ fn detect_chapter_in_seq(tokens: &[Token]) -> Option<NumberRange> {
 ///   another digit Word, and `036` is picked because it's followed by
 ///   `(2021)`.
 pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange> {
+    // If an explicit VOLUME marker exists later in the token stream,
+    // bare-number candidates BEFORE it are part of the title, not the
+    // chapter. Zom 100 - Tome 2 / Kaiju No. 8 / The 100 Girlfriends family:
+    // numbers embedded in series titles shouldn't become chapter numbers
+    // just because they happen to be followed by a volume keyword.
+    //
+    // Chapter markers (Ch, Chapter, Глава, 话) do *not* gate here.
+    // Russian postfix syntax `Манга 2 Глава` means "chapter 2" — the `2`
+    // is the chapter value. Chapter-keyword positioning carries no
+    // title-vs-chapter ambiguity (a postfix chapter keyword confirms the
+    // preceding number IS the chapter), so we don't gate against it.
+    let first_vol_marker = find_first_volume_marker(tokens);
+    let min_index = first_vol_marker.map_or(0, |p| p + 1);
+
     let mut saw_non_numeric_word = false;
     let mut prev_was_vol_keyword = false;
 
@@ -214,9 +228,8 @@ pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange
             Token::Word(w) => {
                 let all_digits = w.chars().all(|c| c.is_ascii_digit());
 
-                // Pure-integer case: gets the full build_range treatment
-                // (decimal + range consumption from following tokens).
-                if all_digits
+                if i >= min_index
+                    && all_digits
                     && saw_non_numeric_word
                     && !prev_was_vol_keyword
                     && let Ok(n) = w.parse::<u32>()
@@ -227,11 +240,8 @@ pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange
                 }
 
                 // Alpha-suffix case: `153b` → 153.5 (Kavita convention).
-                // Only triggers when the word has a single lowercase letter
-                // tail attached to digits — parse_extended_number's other
-                // branches (bare digits, CJK-tail) are handled above or
-                // not applicable here.
-                if !all_digits
+                if i >= min_index
+                    && !all_digits
                     && saw_non_numeric_word
                     && !prev_was_vol_keyword
                     && let Some(n) = parse_extended_number(w)
@@ -254,6 +264,44 @@ pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange
     None
 }
 
+/// Position of the first Word token that's an explicit VOLUME-kind marker
+/// (volume keyword, vol prefix like `v01`/`S01`/`sp02`/`t6`, CJK vol
+/// prefix like `시즌3`, CJK vol postfix like `1巻`). Used to gate
+/// bare-number chapter candidates: volume markers mean "there's
+/// structured metadata"; numbers before them in the title are title
+/// content, not chapter declarations.
+fn find_first_volume_marker(tokens: &[Token]) -> Option<usize> {
+    tokens.iter().position(|t| match t {
+        Token::Word(w) => {
+            is_volume_keyword(w)
+                || strip_volume_prefix(w).is_some()
+                || strip_cjk_prefix_volume(w).is_some()
+                || find_cjk_marker_number_in_word(w, CJK_VOLUME_MARKERS).is_some()
+        }
+        _ => false,
+    })
+}
+
+/// Position of the first Word token that's an explicit structured marker
+/// of any kind (volume or chapter). Used by title detection to disable
+/// bare-number title stops: if any marker is coming up, the walk should
+/// reach it naturally rather than getting cut short by an incidental
+/// number earlier in the filename.
+fn find_first_structured_marker(tokens: &[Token]) -> Option<usize> {
+    tokens.iter().position(|t| match t {
+        Token::Word(w) => {
+            is_volume_keyword(w)
+                || strip_volume_prefix(w).is_some()
+                || strip_cjk_prefix_volume(w).is_some()
+                || find_cjk_marker_number_in_word(w, CJK_VOLUME_MARKERS).is_some()
+                || is_chapter_keyword(w)
+                || parse_chapter_num_from_word(w).is_some()
+                || find_cjk_marker_number_in_word(w, CJK_CHAPTER_MARKERS).is_some()
+        }
+        _ => false,
+    })
+}
+
 /// True when the bare number at `start_idx - 1` is "followed by something
 /// chapter-y" rather than "followed by more title text":
 /// - Immediately followed by `.<digits>` or `-<digits>` — decimal / range
@@ -267,16 +315,26 @@ pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange
 /// Otherwise the bare number is presumed part of the title (`Kaiju No. 8`,
 /// `The 100 Girlfriends`).
 pub(crate) fn bare_number_followed_by_metadata(tokens: &[Token], start_idx: usize) -> bool {
-    // Fast path: `N.<digits>` (decimal) or `N-<digits>` (range). The base
-    // number is "attached to" its decimal/range extension and should be
-    // treated as a candidate (`build_range` will consume the extension).
-    if let Some(Token::Delimiter(c)) = tokens.get(start_idx)
-        && matches!(c, '.' | '-')
+    // Fast paths for "number is attached to something chapter-y" cases:
+    //   `N.<digits>`         decimal extension (`017.5`)
+    //   `N-<digits>`         range extension (`001-003`)
+    //   `N-<digits><alpha>`  range with Kavita alpha-suffix (`150-153b`)
+    //   `N.<ext>`            filename extension (`29.rar`, `01.jpg`)
+    if let Some(Token::Delimiter(delim)) = tokens.get(start_idx)
         && let Some(Token::Word(next_w)) = tokens.get(start_idx + 1)
         && !next_w.is_empty()
-        && next_w.chars().all(|ch| ch.is_ascii_digit())
     {
-        return true;
+        match delim {
+            '.' if (next_w.chars().all(|ch| ch.is_ascii_digit())
+                || looks_like_extension(next_w)) =>
+            {
+                return true;
+            }
+            '-' if parse_extended_number(next_w).is_some() => {
+                return true;
+            }
+            _ => {}
+        }
     }
     for t in &tokens[start_idx.min(tokens.len())..] {
         match t {
@@ -288,6 +346,17 @@ pub(crate) fn bare_number_followed_by_metadata(tokens: &[Token], start_idx: usiz
         }
     }
     true
+}
+
+/// A Word like `rar` / `cbz` / `jpg` / `epub` — 2-5 ASCII alphanumeric chars
+/// with at least one letter. Used *only* in the `.<ext>` fast-path of
+/// [`bare_number_followed_by_metadata`]; a raw Word of this shape is far
+/// too permissive to count as metadata on its own ("the" and "of" would
+/// match), so the extension check is gated on a preceding `.` delimiter.
+fn looks_like_extension(w: &str) -> bool {
+    (2..=5).contains(&w.len())
+        && w.bytes().all(|b| b.is_ascii_alphanumeric())
+        && w.bytes().any(|b| b.is_ascii_alphabetic())
 }
 
 /// A Word like `RHS` / `MT` / `SCX` — all-uppercase ASCII letters (plus
@@ -543,7 +612,13 @@ pub(crate) fn strip_volume_prefix(word: &str) -> Option<&str> {
     // `t` covers French tome abbreviation (`t6`) and Batman `T2000`.
     // Both single-letter prefixes only match `<letter>\d+`, so titles like
     // "Sword", "Spy", "Tower", "Title", "Test" strip to non-digit tails.
-    for prefix in ["volume", "vol", "v", "s", "t"] {
+    // `sp` covers `SP02`-style special-chapter markers (`Grand Blue ... SP02
+    // Extra`) where the content is semantically a special rather than a true
+    // volume — but treating it as volume-like is enough to stop title walks
+    // at the marker. Must come *before* `s` in the list so `SP02` matches as
+    // `sp` + `02` (two-letter prefix) rather than `s` + `P02` (which would
+    // fail the all-digits check on the tail and leave `SP02` unrecognized).
+    for prefix in ["volume", "vol", "v", "sp", "s", "t"] {
         if let Some(rest) = strip_prefix_ignore_ascii_case(word, prefix)
             && !rest.is_empty()
             && rest.chars().all(|c| c.is_ascii_digit())
@@ -708,6 +783,12 @@ fn find_title_end(filename: &str, tokens: &[Token<'_>], known_extensions: &[&str
     let mut saw_non_numeric_word = false;
     let mut prev_was_vol_keyword = false;
 
+    // If any explicit marker exists later, the walk will naturally stop
+    // there — so disable bare-number stops, which would otherwise cut the
+    // title too early (Zom 100 - Tome 2 → "Zom" instead of "Zom 100";
+    // Monster #8 Ch. 001 → "Monster" instead of "Monster #8").
+    let has_later_marker = find_first_structured_marker(tokens).is_some();
+
     for (token_index, token) in tokens.iter().enumerate() {
         match token {
             Token::Word(w) => {
@@ -725,7 +806,8 @@ fn find_title_end(filename: &str, tokens: &[Token<'_>], known_extensions: &[&str
                     return pos;
                 }
 
-                if all_digits
+                if !has_later_marker
+                    && all_digits
                     && saw_non_numeric_word
                     && !prev_was_vol_keyword
                     && let Ok(n) = w.parse::<u32>()

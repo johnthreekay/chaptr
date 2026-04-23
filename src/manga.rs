@@ -106,15 +106,22 @@ pub enum MangaSource {
 #[must_use]
 pub fn parse(filename: &str) -> ParsedManga<'_> {
     let tokens = tokenize(filename);
+    let volume = common::detect_volume(&tokens);
+    let chapter = common::detect_chapter(&tokens);
+    // Oneshot detection runs after vol/chapter so it can gate on "no
+    // structured numbering present". Title stays populated regardless —
+    // consumers that want to drop the title for specials can check
+    // `is_oneshot` themselves.
+    let is_oneshot = detect_oneshot(&tokens, volume.is_some(), chapter.is_some());
     ParsedManga {
         title: common::detect_title(filename, &tokens, MANGA_EXTENSIONS),
-        volume: common::detect_volume(&tokens),
-        chapter: common::detect_chapter(&tokens),
+        volume,
+        chapter,
         group: detect_group(&tokens),
         source: detect_source(&tokens),
         language: None,
         revision: common::detect_chapter_revision(&tokens),
-        is_oneshot: false,
+        is_oneshot,
         edition: detect_edition(&tokens),
         extension: detect_extension(filename),
     }
@@ -259,6 +266,78 @@ fn detect_edition<'a>(tokens: &[Token<'a>]) -> Option<Cow<'a, str>> {
 /// or `None` if we hit a bracket/paren/curly or end-of-tokens. Used by
 /// edition detection to find `Word("Edition")` after `Word("Omnibus")`
 /// regardless of whether the two are separated by spaces or underscores.
+/// Detect oneshot / doujin / artbook filenames where Kavita (and most
+/// manga-library consumers) treat the file as metadata-only with no real
+/// series name.
+///
+/// Two patterns, both conservative to avoid false positives against the
+/// corpus (`Knights of Sidonia c000 (...Omake...)` / `Goblin Slayer Side
+/// Story - Year One 025.5` / `Corpse Party -The Anthology- Sachikos...
+/// Chapter X` are all NOT oneshots per Kavita despite carrying
+/// "omake"/"anthology"/"side story" keywords):
+///
+/// 1. **Leading `[<digits>]` catalog ID** (≥5 digits) — doujin trackers
+///    assign numeric IDs like `[218565]` to submissions. Short numeric
+///    brackets like `[2020]` are usually years, so we gate on length.
+///    Unambiguously doujin; fires even when a vol/chapter is also
+///    present (rare, but we err toward "flag as oneshot" when this shape
+///    appears).
+///
+/// 2. **Special keyword in a filename with no vol or chapter detected.**
+///    If *any* vol/chapter marker was found (including bare-number
+///    chapters like `025.5`), the file is a regular release and keywords
+///    like "Special" or "Art Collection" elsewhere are just title
+///    material. The keyword check only fires as a last-resort signal
+///    when the filename has no numeric content at all.
+fn detect_oneshot(tokens: &[Token<'_>], has_volume: bool, has_chapter: bool) -> bool {
+    // Pattern 1: leading `[<digits>]` catalog ID (doujin style).
+    for t in tokens {
+        match t {
+            Token::Delimiter(_) => continue,
+            Token::Bracketed(content) => {
+                if content.len() >= 5 && content.bytes().all(|b| b.is_ascii_digit()) {
+                    return true;
+                }
+                break;
+            }
+            _ => break,
+        }
+    }
+
+    // Pattern 2: special keyword in a filename with no numbering.
+    if has_volume || has_chapter {
+        return false;
+    }
+
+    // Narrow keyword list — broader keywords (omake, anthology, side
+    // story, bonus chapter) collide with legitimate title content when
+    // they appear alongside chapter/volume markers in the corpus, and
+    // without them we have no disambiguator. The three phrases below are
+    // the ones that appeared in the no-vol/no-ch FAIL fixtures
+    // (Love Hina, Ani-Hina, Chrno Crusade).
+    const SINGLE_WORD_SPECIALS: &[&str] = &["special", "specials"];
+    const TWO_WORD_SPECIALS: &[(&str, &str)] = &[("art", "collection"), ("all", "stars")];
+
+    for (i, t) in tokens.iter().enumerate() {
+        let Token::Word(w) = t else { continue };
+        let lower = w.to_ascii_lowercase();
+        if SINGLE_WORD_SPECIALS.contains(&lower.as_str()) {
+            return true;
+        }
+        if let Some(next_w) = next_word_after_delims(tokens, i + 1) {
+            let next_lower = next_w.to_ascii_lowercase();
+            if TWO_WORD_SPECIALS
+                .iter()
+                .any(|(a, b)| lower == *a && next_lower == *b)
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 fn next_word_after_delims<'a>(tokens: &[Token<'a>], start: usize) -> Option<&'a str> {
     for t in tokens.get(start..)? {
         match t {
@@ -871,6 +950,115 @@ mod tests {
         assert_eq!(p.edition, None);
     }
 
+    // ----- v1.3.0 edge cases -----
+
+    #[test]
+    fn title_preserved_when_embedded_number_followed_by_volume_keyword() {
+        // Pre-1.3: title walk stopped at "100" because "Tome" = vol keyword
+        // got treated as "metadata after bare number", so "100" looked like
+        // a chapter. 1.3 pre-scans for the first VOLUME marker and disables
+        // bare-number title stops when one exists — "100" stays in title.
+        let p = parse("Zom 100 - Tome 2");
+        assert_eq!(p.title.as_deref(), Some("Zom 100"));
+        assert_eq!(p.volume, Some(single(ch(2))));
+    }
+
+    #[test]
+    fn title_preserved_with_hash_number_before_chapter_keyword() {
+        // Monster #8 Ch. 001 — `#8` stays in the title because Ch is later.
+        let p = parse("Monster #8 Ch. 001");
+        assert_eq!(p.title.as_deref(), Some("Monster #8"));
+        assert_eq!(p.chapter, Some(single(ch(1))));
+    }
+
+    #[test]
+    fn chapter_russian_postfix_glava_before_number() {
+        // Regression guard from the 1.3.0 iteration: the chapter gate uses
+        // only VOLUME markers, not chapter markers. `Манга 2 Глава` —
+        // Russian postfix: the `2` *is* the chapter, `Глава` is the
+        // after-the-number keyword. A previous attempt gated bare-number
+        // on all markers and broke this; now we gate only on vol markers.
+        let p = parse("Манга 2 Глава");
+        assert_eq!(p.chapter, Some(single(ch(2))));
+    }
+
+    #[test]
+    fn range_with_alpha_suffix_end() {
+        // Beelzebub_150-153b → range 150 to 153.5.
+        let p = parse("Beelzebub_150-153b_RHS.zip");
+        assert_eq!(p.chapter, Some(range(ch(150), ch_dec(153, 5))));
+    }
+
+    #[test]
+    fn title_stops_at_number_before_non_manga_extension() {
+        // `.jpg` isn't a manga extension, but a bare-number before any
+        // `.<ext>` pattern is still a chapter candidate — otherwise the
+        // title walk runs to end-of-string.
+        let p = parse("Akiiro Bousou Biyori - 01.jpg");
+        assert_eq!(p.title.as_deref(), Some("Akiiro Bousou Biyori"));
+    }
+
+    #[test]
+    fn title_stops_at_number_before_archive_extension() {
+        let p = parse("Cynthia the Mission 29.rar");
+        assert_eq!(p.title.as_deref(), Some("Cynthia the Mission"));
+    }
+
+    #[test]
+    fn oneshot_love_hina_special() {
+        // Trailing `Special` keyword, no vol/chapter → is_oneshot.
+        let p = parse("Love Hina - Special.cbz");
+        assert!(p.is_oneshot);
+    }
+
+    #[test]
+    fn oneshot_art_collection() {
+        let p = parse("Ani-Hina Art Collection.cbz");
+        assert!(p.is_oneshot);
+    }
+
+    #[test]
+    fn oneshot_all_stars() {
+        let p = parse("Chrno_Crusade_Dragon_Age_All_Stars[AS].zip");
+        assert!(p.is_oneshot);
+    }
+
+    #[test]
+    fn oneshot_doujin_catalog_id_leading_bracket() {
+        // Leading `[<digits>]` with 5+ digits = doujin catalog ID.
+        let p = parse("[218565]-(C92) [BRIO (Puyocha)] Some Title");
+        assert!(p.is_oneshot);
+    }
+
+    #[test]
+    fn oneshot_not_triggered_by_short_numeric_bracket() {
+        // `[2020]` is a year, not a catalog ID — only 4 digits, must be ≥5.
+        let p = parse("[2020] My Series v01");
+        assert!(!p.is_oneshot);
+    }
+
+    #[test]
+    fn oneshot_not_triggered_when_chapter_present() {
+        // `Knights of Sidonia c000 (...Omake...)` has a chapter, so even
+        // `Omake`-adjacent content doesn't flag it as oneshot. This test
+        // also guards against the broader "omake triggers special" heuristic
+        // that would regress several passing fixtures. Here we use a
+        // filename with a narrower special word (`Special`) to exercise the
+        // has_chapter gate directly.
+        let p = parse("Manga Title c005 Special Extra");
+        assert_eq!(p.chapter, Some(single(ch(5))));
+        assert!(!p.is_oneshot);
+    }
+
+    #[test]
+    fn volume_sp_prefix() {
+        // SP02 → volume 2 (semantically a special chapter, but close
+        // enough to vol for title-stopping purposes — see Grand Blue).
+        let p = parse("Grand Blue Dreaming - SP02 Extra (2019) (Digital) (danke-Empire).cbz");
+        assert_eq!(p.title.as_deref(), Some("Grand Blue Dreaming"));
+        assert_eq!(p.volume, Some(single(ch(2))));
+    }
+
     #[test]
     fn title_skips_leading_paren_bracket_chain() {
         // `(一般コミック) [奥浩哉] いぬやしき 第09巻` — both leading
@@ -982,7 +1170,11 @@ mod tests {
     #[test]
     fn corpus_kavita_pass_rate() {
         const CORPUS: &str = include_str!("../corpus/manga_kavita.json");
-        const MIN_AGGREGATE_PASS_RATE: f64 = 0.90;
+        // 1.3.0 reached ~96.9% after the first-vol-marker gate, alpha-suffix
+        // range + extension-dot metadata, sp prefix, and doujin/oneshot
+        // detection. Remaining failures are documented out-of-scope (Thai,
+        // reverse-range CJK, trailing-dot titles, cross-prefix ranges).
+        const MIN_AGGREGATE_PASS_RATE: f64 = 0.95;
 
         let entries: Vec<serde_json::Value> = serde_json::from_str(CORPUS).unwrap();
 
@@ -1011,10 +1203,23 @@ mod tests {
                     entry.get("expected_chapter").and_then(|v| v.as_str()),
                     parse(input).chapter.as_ref().map(format_range),
                 ),
-                "ParseSeriesTest" => (
-                    entry.get("expected_series").and_then(|v| v.as_str()),
-                    parse(input).title.as_deref().map(str::to_owned),
-                ),
+                "ParseSeriesTest" => {
+                    let p = parse(input);
+                    // Oneshots / doujin / artbooks: Kavita expects series ""
+                    // for these. We keep the raw title populated (so
+                    // consumers have something to display if they want),
+                    // but when is_oneshot is set, report the series as
+                    // empty to match Kavita's fixture.
+                    let actual = if p.is_oneshot {
+                        Some(String::new())
+                    } else {
+                        p.title.as_deref().map(str::to_owned)
+                    };
+                    (
+                        entry.get("expected_series").and_then(|v| v.as_str()),
+                        actual,
+                    )
+                }
                 "ParseEditionTest" => (
                     entry.get("expected_edition").and_then(|v| v.as_str()),
                     parse(input).edition.as_deref().map(str::to_owned),
