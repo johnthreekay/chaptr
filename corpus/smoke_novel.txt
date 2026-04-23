@@ -1,0 +1,371 @@
+# chaptr LN smoke corpus
+# Real filenames sampled from Nyaa Literature category via tools/scrape_nyaa.py
+# Filtered to LN-likely entries; some manga slips through and is left intentionally
+# (the smoke test asserts novel::parse() does not crash on any input — including
+# manga strings the model was not designed for).
+# Refresh by re-running the scraper and promoting corpus/raw/nyaa_literature.txt.
+#
+# 362 entries, sorted, deduped
+
+7th Time Loop v01 [Audiobook] [Seven Seas Siren] v2
+86--EIGHTY-SIX - Alter v01-02 [Yen Press] [Stick]
+A Certain Magical Index NT v01-05 [Yen Press] [Stick]
+A Certain Magical Index v01-31 (2015-2025) (Digital) (LuCaZ, Ushi)
+A Couple of Cuckoos v01-28 (2021-2026) (Digital) (Stick)
+A Good Day Starts with Cats and Books [Seven Seas] [Stick]
+A Misanthrope Teaches a Class for Demi-Humans v01-03 [Yen Press] [Stick]
+A Tale of the Secret Saint Vol. 10 [Seven Seas] [Kobo]
+A Tale of the Secret Saint Vol. 9 [Seven Seas] [Kobo]
+A Tale of the Secret Saint ZERO v01-04 [Seven Seas] [Stick]
+A Tale of the Secret Saint v02 [Audiobook] [Seven Seas Siren] v2
+About a Place in the Kinki Region [Yen Press] [Stick]
+Adachi and Shimamura - Short Stories v01-02 [Seven Seas] [Stick]
+Adachi and Shimamura v06 [Audiobook] [Seven Seas Siren] [Stick]
+Agents of the Four Seasons v01-06 [Yen Press] [Stick]
+Almark v01-02 [Yen Press] [Stick]
+Alya Sometimes Hides Her Feelings in Russian v01-09 [Yen Press] [Stick]
+Am I Actually the Strongest? v01-06 [Vertical] [Stick]
+Amagami-san Chi no Enmusubi / Tying the Knot with an Amagami Sister v01-17,150-172 (2022-2025) (Digital) (LuCaZ)
+An Introvert's Hookup Hiccups: This Gyaru Is Head Over Heels for Me! v01-12 [J-Novel Club] [CleanBookGuy]
+Apparently, Disillusioned Adventurers Will Save the World [Yen Press] [Stick]
+Arifureta - From Commonplace to World's Strongest v01-14 + BW Extras [J-Novel Club] [CleanBookGuy]
+Arifureta - From Commonplace to World's Strongest v12 [J-Novel Club] [CleanBookGuy]
+As a Reincarnated Aristocrat, I'll Use My Appraisal Skill to Rise in the World v01 [Vertical] [LuCaZ]
+As a Reincarnated Aristocrat, I'll Use My Appraisal Skill to Rise in the World v01-07 [Vertical] [Stick]
+Ascendance of a Bookworm + Fanbooks + Royal Academy Stories + Short Stories [J-Novel Club] [Stick]
+Ascendance of a Bookworm: Hannelore’s Fifth Year at the Royal Academy - Volume 02 [J-Novel Club]
+Ashita no Joe - Fighting for Tomorrow v01-02 (2024-2025) (Omnibus Edition) (Digital) (LuCaZ)
+Astrolabe Rebirth [Audiobook] [Seven Seas Siren] [¬‿¬]
+Asumi-chan is Interested in Lesbian Brothels! v01-05 (2022-2025) (Digital) (LuCaZ)
+Attack on Titan: Before the Fall [Vertical]
+Ayako (Tezuka) [Vertical] (kickthekitty) (ghiblike)
+Backstabbed in a Backwater Dungeon v01-11 [J-Novel Club] [CleanBookGuy]
+Banished from the Hero's Party, I Decided to Live a Quiet Life in the Countryside v01-09 (2022-2024) (Digital) (LuCaz + Oak)
+Because I, the True Saint, was Banished, that Country is Done For! v01-10 (2024-2026) (Digital) (LuCaZ, Ushi)
+Because I, the True Saint, was Banished, that Country is Done For! v01-10 (2024-2026) (Digital) (LuCaZ, Ushi) (PNG4)
+Becoming a Princess Knight and Working at a Yuri Brothel v01-04 (2024-2025) (Digital) (LuCaZ)
+Berserk v42 (2025) (Digital) (LuCaZ)
+Betrothed to My Sister’s Ex - Volume 01 [Seven Seas]
+Bishounen Tanteidan / Pretty Boy Detective Club v01-03 [Vertical] [LuCaZ]
+Black Summoner v01-22 [J-Novel Club] [CleanBookGuy]
+Blade Skill Online - Volume 02 [J-Novel Club]
+Blue Lock - Episode Nagi v01-07 (2024-2026) (Digital) (Stick)
+Blue Lock v01-36 (2021-2026) (Digital) (Stick)
+Bofuri - I Don't Want to Get Hurt, so I'll Max Out My Defense. v01-17 [Yen Press] [Stick]
+Bofuri: I Don't Want to Get Hurt, so I'll Max Out My Defense, Vol. 17 [Yen Press] [Kobo]
+Bowing to Love - The Noble and the Gladiator [Seven Seas] [¬‿¬]
+Breaking Up Was the Plan, the Duke Falling For the Villainess Was Not! v01-02 [Cross Infinite World] [Stick]
+Brunhild [Yen Press] [Stick]
+Chi. - Chikyuu no Undou ni Tsuite / Orb - On the Movements of the Earth (2023-2024) (Digital) (LuCaZ)
+Chihayafuru v01-49 (2017-2025) (Digital) (danke-Empire, LuCaZ, Shellshock, DeadMan, Rillant)
+Chillin' in Another World with Level 2 Super Cheat Powers v01-19 [J-Novel Club] [CleanBookGuy]
+Chivalry of a Failed Knight v00-08 [J-Novel Club] [CleanBookGuy]
+Chronicles of an Aristocrat Reborn in Another World - Volume 01 [Seven Seas]
+Classroom for Heroes v01-06 [Yen Press] [Stick]
+Classroom of the Elite - Year 2 [Seven Seas] [Stick]
+Classroom of the Elite - Year 2 v01-10 [Seven Seas] [LuCaZ]
+Classroom of the Elite - Year 3 v01 [Seven Seas] [Stick]
+Cooking with Wild Game - Volume 31 [J-Novel Club]
+D-Genesis: Three Years after the Dungeons Appeared v01-09.5 [J-Novel Club] [CleanBookGuy]
+DUNGEON DIVE: Aim for the Deepest Level - Volume 11 [J-Novel Club] [faratnis]
+DUNGEON DIVE: Aim for the Deepest Level v01-12 [J-Novel Club] [CleanBookGuy]
+Dai Dark v01-08 (2021-2025) (Digital) (LuCaZ)
+Date A Live v01-15 [Yen Press] [Stick]
+Dinners with My Darling - How the Former Monster King Ate Her Way to Happiness v01-03 [Cross Infinite World] [Stick]
+Disciple of the Lich - Or How I Was Cursed by the Gods and Dropped Into the Abyss! v03 [Audiobook] [Seven Seas Siren] [Stick]
+Divine Incursions v01 [Yen Press] [Stick]
+Dragon Ball Super v01-23,101-104 (2017-2025) (Digital) (LuCaZ)
+Drugstore in Another World: The Slow Life of a Cheat Pharmacist - Volume 08 [Seven Seas]
+Duchess in the Attic - Volume 04 [J-Novel Club]
+Easygoing Territory Defense by the Optimistic Lord - Production Magic Turns a Nameless Village into the Strongest Fortified City v01-07 [Seven Seas] [Stick]
+Eizouken ni wa Te wo Dasu na! / Keep Your Hands Off Eizouken! v01-07 (2020-2025) (Digital) (LuCaZ)
+Enen no Shouboutai / Fire Force (2016-2023) (Digital) (LuCaZ)
+Engaging with the Plot: A Former Cat’s Attempt to Save Her Now Temporary Fiancé - Volume 02 [J-Novel Club]
+Even a Replica Can Fall in Love v01-04 [Yen Press] [Stick]
+Failure Frame - I Became the Strongest and Annihilated Everything With Low-Level Spells v02 [Audiobook] [Seven Seas Siren] [Stick]
+Fluffy Cafe in Another World v01 [Seven Seas] [Stick]
+Flung into a New World? Time to Lift the 200-Year Curse! - Volume 02 [J-Novel Club]
+Four Child Life v01 [Yen Press] [Stick]
+Free Life Fantasy Online - Immortal Princess v01-10 [Seven Seas] [Stick]
+Frieren - Beyond Journey's End -Prelude- v01 [Yen Press] [Stick]
+From Villainess to Healer - Volume 06 [J-Novel Club]
+GTO - 14 Days in Shonan v01-09 (Digital) [Type it Up] [Vertical]
+Goblin Slayer Side Story - Year One v01-04 [Yen Press] [Stick]
+Gods' Games We Play v01-06 [Yen Press] [Stick]
+Goodbye, Horrible Fiancé, Hello, Fun Magic School Life! v01 [Cross Infinite World] [Stick]
+Goodbye, Overtime! This Reincarnated Villainess Is Living for Her New Big Brother - Volume 06 [J-Novel Club]
+Gunsmith Cats v01 (2025) (Omnibus Edition) (Digital) (LuCaZ)
+Haibara's Teenage New Game+ v01-09 [J-Novel Club] [CleanBookGuy]
+Heir to a Monstermancer - Volume 01 [J-Novel Club]
+Hell Is Dark with No Flowers v01-04 [Yen Press] [Stick]
+Heroine? Saint? No, I'm an All-Works Maid (And Proud of It)! v01-05 [Seven Seas] [Stick]
+Heroine? Saint? No, I'm an All-Works Maid (And Proud of It)! v04 [Audiobook] [Seven Seas Siren]
+How a Realist Hero Rebuilt the Kingdom v01-13 (2019-2026) (Digital) (LuCaZ, Shellshock, Ushi)
+How a Realist Hero Rebuilt the Kingdom v01-20 [J-Novel Club] [CleanBookGuy]
+How to Eat Life v01-02 [Yen Press] [Stick]
+Hyakkano / The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You v01-13 (2022-2025) (Digital) (LuCaZ)
+I Got Married to the Girl I Hate Most in Class v01-02 [Seven Seas] [Stick]
+I Like Villains, so I Reincarnated as One v01 [Seven Seas] [Stick]
+I Shall Survive Using Potions! v01-11 [J-Novel Club] [CleanBookGuy]
+I Wish I Could Meet You Again on the Hill Where That Flower Blooms [Seven Seas] [Stick]
+I'll Never Set Foot in That House Again! v01-07 [J-Novel Club] [CleanBookGuy]
+I'm a Noble on the Brink of Ruin, So I Might as Well Try Mastering Magic - Volume 07 [J-Novel Club]
+I'm the Evil Lord of an Intergalactic Empire! - Volume 10 [Seven Seas]
+I'm the Evil Lord of an Intergalactic Empire! v04 [Audiobook] [Seven Seas Siren] [Stick]
+If the Heroine Wants My Fiancé, I’ll Marry a Yandere Villain Instead! v01-02 [Cross Infinite World] [Stick]
+If the Villainess and Villain Met and Fell in Love v01-04 [Yen Press] [Stick]
+Imperial Reincarnation: I Came, I Saw, I Survived - Volume 04 [J-Novel Club]
+In Another World With My Smartphone - Volume 31 [J-Novel Club]
+In Another World with Household Spells - Volume 03 [J-Novel Club]
+In Another World with My Smartphone v01-15 (2021-2026) (Digital) (LuCaZ, Ushi)
+Infinite Dendrogram SP - Volume 02 [J-Novel Club]
+Infinite Dendrogram v01-14 (2019-2025) (Digital) (LuCaZ,Ushi)
+Initial D v01-05 (2024-2025) (Omnibus Edition) (Digital) (LuCaZ)
+Initial D v06 (2025) (Omnibus Edition) (Digital) (LuCaZ).cbz
+Into the Deepest, Most Unknowable Dungeon v01-10 (2022-2025) (Digital) (LuCaZ)
+Is It Wrong to Try to Pick Up Girls in a Dungeon II v01-06 (2021-2025) (Digital) (LuCaZ, Ushi)
+Is It Wrong to Try to Pick Up Girls in a Dungeon On the Side - Sword Oratoria v01-27 (2017-2026) (Digital) (LuCaZ, Ushi)
+Isekai Tensei: Recruited to Another World - Volume 12 [J-Novel Club]
+Ishura v01-10 [Yen Press] [Stick]
+I’ll Become a Villainess Who Goes Down in History v01-03 [Yen Press] [Stick]
+Jitsu wa Ore, Saikyou deshita / Am I Actually the Strongest? v01-03 [Vertical] [LuCaZ]
+Joyful Reunion v01-03 [Seven Seas] [Stick]
+KATANAGATARI [Vertical] [LuCaZ]
+King's Proposal v01-07 [Yen Press] [Stick]
+KinnPorsche v04 [Audiobook] [Seven Seas Siren] [Stick]
+Kuma Kuma Kuma Bear v06 [Audiobook] [Seven Seas Siren] [Stick]
+Legend of the Far East's Savior v01 [Yen Press] [Stick]
+Liar, Liar v01-07 [Yen Press] [Stick]
+Loner Life in Another World - Volume 13 [Seven Seas]
+Loner Life in Another World v01 [Audiobook] [Seven Seas Siren] [Stick]
+Looks like a Job for a Maid! The Tales of a Dismissed Supermaid - Volume 01 [J-Novel Club]
+Lycoris Recoil - Recovery Days [Yen Press] [Stick]
+Made in Abyss v01-14 (2018-2026) (Digital) (LuCaZ)
+Magic Maker - How to Create Magic in Another World v01 [Seven Seas] [Stick]
+Magical Buffs - The Support Caster is Stronger Than He Realized! v01 [Seven Seas] [Stick]
+Mahoutsukai Reimeiki / The Dawn of the Witch [Vertical] [LuCaZ]
+Maiden's Bookshelf v01-05 [Vertical] [Stick]
+Making Magic - The Sweet Life of a Witch Who Knows an Infinite MP Loophole v01-09 [J-Novel Club] [CleanBookGuy]
+Masquerade and the Nameless Women (Eiji Mikage) [Vertical]
+Me, a Genius? I Was Reborn into Another World and I Think They've Got the Wrong Idea! v01-03 [J-Novel Club] [CleanBookGuy]
+Megami no Cafe Terrace / The Café Terrace and its Goddesses v01-16,158-187 (2022-2025) (Digital) (LuCaZ)
+Mercedes and the Waning Moon: Volume 4 [J-Novel Club] [Premium]
+Min-Maxing My TRPG Build in Another World v01-11.1 [J-Novel Club] [CleanBookGuy]
+Miss Blossom’s Backward Beauty Standards: Give Me the Ugly Crown Prince! - Volume 01 [J-Novel Club]
+Monogatari Series v01-20 [Vertical] [LuCaZ]
+Monsterholic [Yen Press] [Stick]
+Moscow 2160 v01 [Yen Press] [Stick]
+Mushoku Tensei - Redundant Reincarnation v01-03 [Seven Seas] [Stick]
+My Friend's Little Sister Has It In for Me! - Volume 11 [J-Novel Club] [faratnis]
+My Girlfriend Cheated on Me, and Now My Flirty Underclassman Won't Leave Me Alone v01 [Seven Seas] [Stick]
+My Girlfriend Cheated on Me, and Now My Flirty Underclassman Won't Leave Me Alone v01 [Seven Seas] [nao]
+My Happy Marriage v01-09 [Yen Press] [Stick]
+My Unique Skill Makes Me OP Even at Level 1 v01 [Vertical] [LuCaZ]
+My Unique Skill Makes Me OP Even at Level 1 v01-09 [Vertical] [Stick]
+Nagisa Natsunagi Still Wants to Be a High School Girl v01-02 [Yen Press] [Stick]
+New Game Plus After Defeating the Last Boss v01 [Yen Press] [Stick]
+Nia Liston: The Merciless Maiden v01-08 [J-Novel Club] [CleanBookGuy]
+Ninkatsu Shufu no Koibito | A Childless Affair [Vertical Color Version, Decensored] c001-032 (Web) (wangson)
+No Game No Life v11 - (Chapter 1) Vertical Thinking - In the Bottom [Yen Press] [LuCaZ]
+No Longer Human (Ningen Shikkaku) v01-03 (2011-2012) (Vertical) (Random Scans)
+Noragami - Stray God (2014-2024) (Digital) (LuCaZ)
+Notorious No More: The Villainess Enjoys Feigning Incompetence - Volume 02 [J-Novel Club]
+Now I'm a Demon Lord! Happily Ever After with Monster Girls in My Dungeon v01-15 [J-Novel Club] [CleanBookGuy]
+Officially Translated Light Novels (LNs) v24.03
+Omniscient Reader's Viewpoint v01-03 [Yen Press] [Stick]
+Once Upon a Witch's Death v01-02 [Yen Press] [Stick]
+One Last Hurrah! The Grayed Heroes Explore a Vivid Future - Volume 01 [J-Novel Club]
+Orc Eroica v01-06 [Yen Press] [Stick]
+Parallel Paradise v01-24 (2020-2025) (Digital) (LuCaZ,Ushi,Kaos)
+Pens Down, Swords Up: Throw Your Studies to the Wind - Volume 04 [J-Novel Club]
+Playing Death Games to Put Food on the Table v01-05 [Yen Press] [Stick]
+Pretty Boy Detective Club Vol. 01 [Vertical]
+Private Tutor to the Duke's Daughter v01-19 [J-Novel Club] [CleanBookGuy]
+Promised to a Dragon - Volume 01 [J-Novel Club]
+ROLL OVER AND DIE: I Will Fight for an Ordinary Life with My Love and Cursed Sword! - Volume 05 [Seven Seas]
+Rascal Does Not Dream of [Yen Press] [Stick]
+Re:ZERO -Starting Life in Another World- Ex v01-06 [Yen Press] [Stick]
+Re:ZERO -Starting Life in Another World- v01-28 [Yen Press] [Stick]
+ReZERO -Starting Life in Another World- Short Story Collection v01-04 [Yen Press] [Stick]
+Reborn as a Space Mercenary - I Woke Up Piloting the Strongest Starship! - Volume 14 [Seven Seas]
+Reborn as an Assassin's Apprentice v01 [Seven Seas] [Stick]
+Rebuild World v01.1-07 [J-Novel Club] [CleanBookGuy]
+Record of Wortenia War - Volume 30 [J-Novel Club]
+Reincarnated Into a Game as the Hero’s Friend - Running the Kingdom Behind the Scenes v01-06 [Seven Seas] [Stick]
+Reincarnated as a Dragon Hatchling - Volume 12 [Seven Seas]
+Reincarnated as a Sword v15 [Audiobook] [Seven Seas Siren] [Stick]
+Rent-A-Girlfriend v01-35 (2020-2026) (Digital) (Sticky Oak)
+Restaurant to Another World - Volume 06 [Seven Seas]
+Revenge of the Soul Eater: Cast Out as a Weakling by My Sword Saint Father - Volume 03 [J-Novel Club]
+Riku Can't Be a Goddess [Audiobook] [Seven Seas Siren] [Stick]
+Rougo ni Sonaete Isekai de 8-manmai no Kinka wo Tamemasu / Saving 80,000 Gold in Another World for my Retirement v01-04 [Vertical] [nao]
+Royal Spirits Are a Royal Pain! Give Me a Regular Romance - Volume 01 [J-Novel Club]
+Sasaki Agency Series v01-03 [Yen Press] [Stick]
+Saving 80,000 Gold in Another World for my Retirement v01-02 [Vertical] [LuCaZ]
+Saving 80,000 Gold in Another World for my Retirement v01-09 [Vertical] [Stick]
+Secrets of the Silent Witch -another- [Yen Press] [Stick]
+Semantic Error v01 [Yen Press] [Stick]
+Sentenced to Be a Hero v01-05 [Yen Press] [Stick]
+Shanti [Yen Press] [Stick]
+She Professed Herself Pupil of the Wise Man - Volume 15 [Seven Seas]
+She Professed Herself Pupil of the Wise Man v01-16 [Seven Seas] [Stick]
+She Professed Herself Pupil of the Wise Man v05 [Audiobook] [Seven Seas Siren] [Stick]
+She Professed Herself Pupil of the Wise Man v06 [Audiobook] [Seven Seas Siren]
+She Professed Herself Pupil of the Wise Man v07 [Audiobook] [Seven Seas Siren]
+Shin Sekai Yori (Vertical)
+Skeleton Knight in Another World v01 [Audiobook] [Seven Seas Siren] [Stick]
+So I'm a Spider, So What? Ex v01 [Yen Press] [Stick]
+Soara and the House of Monsters v01-04 (2023-2025) (Digital) (LuCaZ)
+Spy Classroom v01-10 [Yen Press] [Stick]
+Strawberry Princess - The Time Loop Defying Villainess [Cross Infinite World] [Stick]
+Sugar Apple Fairy Tale v01-09 [Yen Press] [Stick]
+Survival in Another World with My Mistress! v01-09 [Seven Seas] [Stick]
+Survival in Another World with My Mistress! v08 [Audiobook] [Seven Seas Siren] [Stick]
+Sword Art Online Re-Aincrad v01-04 (2024-2026) (Digital) (LuCaZ, Ushi)
+Sword Saint Adel’s Second Chance - Volume 04 [J-Novel Club]
+Sword of the Demon Hunter - Kijin Gentosho v08 [Audiobook] [Seven Seas Siren] [Stick]
+Sword of the Stallion v01-02 [Yen Press] [Stick]
+That Beauty Is a Tramp (2024-2026) (Digital) (Stick)
+That Time I Got Reincarnated as a Slime v01-22 [Yen Press] [Stick]
+The Amazing Village Creator: Slow Living with the Village Building Cheat Skill - Volume 01 [J-Novel Club]
+The Angel Next Door Spoils Me Rotten v01-09 [Yen Press] [Stick]
+The Apothecary Diaries 01-15 [J-Novel Club] [CleanBookGuy]
+The Azure Sword, Slayer of Distortions v01 [Yen Press] [Stick]
+The Banished Former Hero Lives as He Pleases - Volume 06 [J-Novel Club]
+The Blade of the Courtesans [Vertical] [Stick]
+The Brilliant Healer's New Life in the Shadows - Volume 08 [J-Novel Club]
+The Brooding Duke’s Guide to the Lie-Detecting Lady [Cross Infinite World] [Stick]
+The Bubble Love of the Mermaid v01 [Yen Press] [Stick]
+The Casebook of Kurumi Tokisaki, Magic Detective [Yen Press] [Stick]
+The Condemned Villainess Goes Back in Time and Aims to Become the Ultimate Villain v05 [Audiobook] [Seven Seas Siren] [Stick]
+The Contract Between a Specter and a Servant v01-05 [Yen Press] [Stick]
+The Dawn of the Witch [Vertical] [Stick]
+The Dawn of the Witch v01-03 [Vertical] [LuCaZ]
+The Death Mage - Volume 04 [One Peace Books]
+The Death Mage - Volume 05 [One Peace Books]
+The Death Mage - Volume 06 [One Peace Books]
+The Death Mage v01-03 [One Peace Books] [Stick]
+The Detective Is Already Dead v01-11 [Yen Press] [Stick]
+The Devil Princess v01-03 [Seven Seas] [Stick]
+The Diary of a Middle-Aged Sage's Carefree Life in Another World v01-09 [J-Novel Club] [CleanBookGuy]
+The Dorky NPC Mercenary Knows His Place - Volume 04 [J-Novel Club]
+The Ephemeral Scenes of Setsuna's Journey v01-06 [Yen Press] [Stick]
+The Fearsome Witch Teaches in Another World - Volume 01 [J-Novel Club]
+The Fearsome Witch Teaches in Another World v01-02 [J-Novel Club] [Antithetical]
+The Frontier Lord Begins with Zero Subjects - Volume 11 [J-Novel Club]
+The Fruit of Evolution - Before I knew it, my life had it made! v01-12 [Hanashi Media] [Stick + Oak]
+The Ghost in the Shell - The Human Algorithm (2020-2026) (Digital) (Sticky Oak) [Completed]
+The Guin Saga v001-005 (Vertical) (epub)
+The Hero and the Sage, Reincarnated and Engaged v01-06 [J-Novel Club] [CleanBookGuy]
+The Husky and His White Cat Shizun - Erha He Ta De Bai Mao Shizun [Seven Seas] [LuCaZ, Rillant]
+The Invincible Little Lady v01-07 [J-Novel Club] [Antithetical]
+The Invincible Little Lady v01-07 [J-Novel Club] [CleanBookGuy]
+The Irregular at Magic High School v01-26 [Yen Press] [Stick]
+The Isle of Paramounts: Reborn into a Slow Life Among the Strongest in the World - Volume 01 [J-Novel Club]
+The Magical Revolution of the Reincarnated Princess and the Genius Young Lady v01-08.5 [Yen Press] [Stick]
+The Misdeeds of an Extremely Arrogant Villain Aristocrat v01-02 [Seven Seas] [Stick]
+The Misfit of Demon King Academy - Volume 10 Act 2 [J-Novel Club] [faratnis]
+The Misfit of Demon King Academy v01-11 [J-Novel Club] [CleanBookGuy]
+The Only Thing I'd Do in a No-Boys-Allowed Game World v01-03 [Yen Press] [Stick]
+The Ramparts of Ice 001-103 {2026} {Digital} {Scroll Toon} {Stick}
+The Reincarnated Princess Spends Another Day Skipping Story Routes - Volume 10 [J-Novel Club]
+The Reincarnation of the Strongest Exorcist in Another World - Volume 06 [J-Novel Club]
+The Reprise of the Spear Hero v01-03 [One Peace Books] [DigitalMangaFan]
+The Reprise of the Spear Hero v01-03 [One Peace Books] [Stick]
+The Ring Trilogy | Ringu (Ring + Spiral + Loop) by Koji Suzuki (EPUB) [Vertical]
+The Rising of the Shield Hero v01-14 [One Peace Books]
+The Rising of the Shield Hero v01-22 [One Peace Books] [DigitalMangaFan]
+The Seven Deadly Sins v02 - Seven-Colored Recollections [Vertical] [LuCaZ]
+The Strange Adventure of a Broke Mercenary, Vol. 14 [Seven Seas] [Kobo]
+The Tale of a Little Alchemist Blessed by the Spirits v01-02 [Seven Seas] [Stick]
+The Too-Perfect Saint - Tossed Aside by My Fiancé and Sold to Another Kingdom v01 [Audiobook] [Seven Seas Siren] [Stick]
+The Too-Perfect Saint - Tossed Aside by My Fiancé and Sold to Another Kingdom v01-05 [Seven Seas] [nao]
+The Trials and Tribulations of My Next Life as a Noblewoman - Volume 03 Part 2 [J-Novel Club]
+The Twelve Kingdoms v01-04 [Seven Seas] [Stick]
+The Twelve Kingdoms v03 [Seven Seas]
+The Unimplemented Overlords Have Joined the Party! v01-05 [Yen Press] [Stick]
+The Unwanted Undead Adventurer - Volume 14 [J-Novel Club]
+The Vertical World 001-120 (2019-2021) (Digital) (Antrill) [Completed]
+The Vexations of a Shut-In Vampire Princess v01-10 [Yen Press] [Stick]
+The Weakest Tamer Began a Journey to Pick Up Trash v01-12 [Seven Seas] [Stick]
+The Wicked Princess and Her Twelve Eyes: The Legendary Villainess and Her Elite Assassins [Seven Seas]
+The World Bows Down Before My Flames v01-03 [Yen Press] [Stick]
+The World's Finest Assassin Gets Reincarnated in Another World as an Aristocrat v01-08 [Yen Press] [CleanBookGuy]
+The World's Strongest Witch - I'm Starting My Free Life in a World Where Only I Can See the Online Strategy Guide v01-02 [Yen Press] [nao]
+The World's Strongest Witch - I’m Starting My Free Life in a World Where Only I Can See the Online Strategy Guide v01-02 [Yen Press] [Stick]
+The Wrong Way to Use Healing Magic v01-02 [One Peace Books] [Stick]
+The Wrong Way to Use Healing Magic v01-05 [One Peace Books] [DigitalMangaFan]
+There's No Freaking Way I'll be Your Lover! Unless... v01-07 [Seven Seas] [Stick]
+They Don’t Know I’m Too Young for the Adventurer’s Guild - Volume 03 [J-Novel Club]
+This Gyaru’s Got a Thing for...Vampire Hunters?! - Volume 02 [J-Novel Club]
+This Is the Wizard’s Secret Weapon v01-02 [Yen Press] [Stick]
+Thou, as My Knight v01 [Yen Press] [Stick]
+Though I Am an Inept Villainess - Tale of the Butterfly-Rat Body Swap in the Maiden Court - Volume 10 [Seven Seas] (Light Novel)
+To Sir, Without Love - I'm Divorcing You v01 [Yen Press] [Stick]
+To the Monster I Love v01 [Yen Press] [Stick]
+Tonari no Seki-kun | My neighbor Seki-kun- Vol.01-10 [Vertical] [Digital] [CBZ]
+Tongari Boushi no Atelier / Witch Hat Atelier v01-14,082-095 (2019-2026) (Digital) (LuCaZ)
+Too Many Losing Heroines! v01-07 [Seven Seas] [Stick]
+Toradora! v08 [Audiobook] [Seven Seas Siren] [Stick]
+Totto-chan, the Little Girl at the Window - The Sequel [Vertical] [Stick]
+Trapped in a Dating Sim - The World of Otome Games is Tough for Mobs v06 [Audiobook] [Seven Seas Siren] [Stick]
+Twin Spica [Digital] [Vertical]
+Utsubora (NAKAMURA Asumiko) [Vertical]
+Venus Mission - I Was an Assassin-for-Hire Who Died, Now I'm Hunting Heroes in Another World v01 [Seven Seas] [Stick]
+Villains Are Destined to Die v01-02 [Yen Press] [Stick]
+Virgin Knight - I Became the Frontier Lord in a World Ruled by Women v01-02 [Seven Seas] [Stick]
+WIND BREAKER v01-20 (2022-2025) (Digital) (LuCaZ, Rillant)
+Wandering Witch - The Journey of Elaina v01-16 [Yen Press] [Stick]
+When a Clueless First-Person Shooter Player Falls into Another World v01 [Seven Seas] [Stick]
+Witch and Mercenary v01-06 [Seven Seas] [Stick]
+Witches Can't Be Collared v01-02 [Yen Press] [Stick]
+Wolf & Parchment - New Theory Spice & Wolf v01-11 [Yen Press] [Stick]
+Worthless at Home, Whiz to the World - Volume 02 [J-Novel Club]
+Yuri Tama - From Third Wheel to Trifecta v01-05 [J-Novel Club] [Antithetical]
+Yuri Tama: From Third Wheel to Trifecta v01-05 [J-Novel Club] [CleanBookGuy]
+Zaregoto Series 1-9 [Vertical, DutchAngleTL, Suiminchuudoku, SwayTL] [ACTS]
+Zaregoto Series v01-03 [Vertical] [LuCaZ]
+Zero Damage Sword Saint - I Enrolled in a Magic School and Wound Up in a Contract with the Demon Queen v01-02 [J-Novel Club] [CleanBookGuy]
+Zilbagias the Demon Prince: How the Seventh Prince Brought Down the Kingdom - Volume 05 [J-Novel Club]
+[Kitzoku] The Rising of the Shield Hero (Tate no Yuusha no Nariagari) - Light Novel - Volume 1 - 11 - PDF (One Peace Books)
+[Osamu Tezuka] Buddha v01-08 (2003-2007) (Vertical)
+[Unpaid Ferryman] Breakfast with My Two-Tailed Cat v01-03 (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Cat Man (2025) (LuCaZ)
+[Unpaid Ferryman] Dance in the Vampire Bund: Age of Scarlet Order v01-14 (2020-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Daughter of the Emperor v01-10 (2022-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Dungeon People v01-05 (2022-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Fungus and Iron v01-06 (2022-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Go! Go! Loser Ranger! v01-12, 113-142 (2022-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Having an Idol-Loving Boyfriend is the Best! (2022-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Hazure Skill: The Guild Member with a Worthless Skill Is Actually a Legendary Assassin v01-07 (2021-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] I Have a Crush at Work v01-08 (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] I'm a Behemoth, an S-Ranked Monster, but Mistaken for a Cat, I Live as an Elf Girl's Pet v01-11 (2020-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Is It Wrong to Try to Pick Up Girls in a Dungeon? On the Side: Sword Oratoria v01-25 (2017-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Itaewon Class v01-05 (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Malevolent Spirits: Mononogatari v01-10 (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Nina the Starry Bride v01-14 (2021-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] No Longer Allowed in Another World v01-08 (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Ogami-san Can't Keep It In (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Overgeared v01-07 (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Parallel Paradise v01-23 (2020-2025) (Digital) (LuCaZ + Ushi + Kaos)
+[Unpaid Ferryman] Pass the Monster Meat, Milady! v01-07,036-047 (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Peter Grill and the Philosopher's Time v01-14 (2020-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] ReZero | Re-Zero | Re:ZERO -Starting Life in Another World- Chapter 4 - The Sanctuary and the Witch of Greed v01-09 (2021-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Reign of the Seven Spellblades (2021-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Reincarnated as a Dragon Hatchling v01-07 (2021-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Shikimori's Not Just a Cutie (2020-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Sketchy v01-05 (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Solo Leveling v01-11 (2021-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Spoil Me Plzzz, Hinamori-san! (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Succubus and Hitman v01-08 (2022-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Suzume (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] Sword Art Online Re:Aincrad v01-03 (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] The Beast Player v01-05 (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] The Blue Wolves of Mibu v01-04 (2024-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] The Case Study of Vanitas v01-11, 063 (2016-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] The Great Snake's Bride v01-05 (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] The Invisible Man and His Soon-to-Be Wife v01-05 (2023-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] The Legend of Dororo and Hyakkimaru v01-09 (2020-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] With You and the Rain v01-07 (2021-2025) (Digital) (LuCaZ)
+[Unpaid Ferryman] World's End Harem: Fantasia v01-14 (2019-2025) (Digital) (LuCaZ)
+メメントモリ Official Art Book / MementoMori Official Art Book (2023) (JPN) (Digital) (LuCaZ)

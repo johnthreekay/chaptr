@@ -46,4 +46,33 @@ mod tests {
         let p = parse("");
         assert_eq!(p, ParsedNovel::default());
     }
+
+    /// Smoke-test against ~360 real LN filenames sampled from Nyaa.
+    ///
+    /// Asserts only that `parse()` does not panic on any of them — no
+    /// expected-output assertions. The smoke corpus deliberately includes
+    /// false-positive manga entries; a parser pinned to LN grammar must still
+    /// degrade gracefully (return a `ParsedNovel` with mostly-`None` fields)
+    /// when handed a manga string, not crash.
+    ///
+    /// Refresh the corpus by re-running `tools/scrape_nyaa.py` and promoting
+    /// `corpus/raw/nyaa_literature.txt` → `corpus/smoke_novel.txt`.
+    #[test]
+    fn smoke_corpus_does_not_panic() {
+        const CORPUS: &str = include_str!("../corpus/smoke_novel.txt");
+        let mut count = 0usize;
+        for line in CORPUS.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let _ = parse(line);
+            count += 1;
+        }
+        // Sanity-check the corpus didn't get truncated to nothing.
+        assert!(
+            count > 100,
+            "smoke corpus shrank suspiciously: {count} entries"
+        );
+    }
 }

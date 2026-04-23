@@ -16,6 +16,15 @@ fabricating richer expectations we can't verify.
 | `novel_kavita.json` | Kavita `BookParsingTests.cs` | 5 | `volume` or `series` | GPL-3.0 |
 | `chapters_mihon.json` | Mihon `ChapterRecognitionTest.kt` | 54 | `chapter` as `f64` | Apache-2.0 |
 | `novel_nyaa.json` | Hand-picked from Nyaa scrape | 8 | full-struct partial (group, volume_range, year_range, publisher, scanner, is_digital) | (input is filename metadata; assertions are ours) |
+| `smoke_novel.txt` | Bulk Nyaa scrape, LN-filtered | 362 | none — smoke test only | (input is filename metadata; no assertions) |
+
+The `.txt` file is the **smoke corpus**: a flat list of real filenames
+with no expected outputs. Loaded by `src/novel.rs`'s
+`smoke_corpus_does_not_panic` test, which asserts only that `novel::parse()`
+returns without panicking on every line. False-positive manga entries
+are left in deliberately — a robust LN parser should also degrade
+gracefully on manga strings rather than crash. Refresh by re-running
+`tools/scrape_nyaa.py` and promoting the raw output.
 
 Hand-picked entries (`novel_nyaa.json`) use a richer per-entry expected
 shape than the upstream-lifted files because we get to assert anything
