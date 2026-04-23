@@ -13,6 +13,14 @@
 ///
 /// Spans are zero-copy slices into the input — `Token<'a>` carries the input lifetime.
 /// Bracket/paren/curly variants exclude the surrounding markers from their slice.
+///
+/// **Invariant**: any `Token<'a>` produced by [`tokenize`] holds slices that
+/// point into the same `&'a str` that was passed in. The title-detection
+/// helpers in `crate::common` reverse this via pointer arithmetic to recover
+/// byte positions — if a caller constructs a `Token::Word` from a string
+/// slice that *doesn't* point into the original filename (e.g. an owned
+/// `String` converted via `.as_str()`), those position helpers will return
+/// `None` or garbage. Produce tokens through `tokenize()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Token<'a> {
     /// Content inside `[...]`, exclusive of the brackets themselves.

@@ -269,6 +269,13 @@ fn build_range(tokens: &[Token], cursor: usize, start_whole: u32) -> NumberRange
 /// Skip up to N delimiters, then read a number-shaped Word. Used for
 /// `Vol 1` / `Vol. 1` / `Volume_01` / `Chapter 12` patterns.
 fn parse_number_after_marker(tokens: &[Token], start: usize) -> Option<NumberRange> {
+    // Cap at 3 delimiters between the marker keyword and its number. The
+    // common forms are:
+    //   `Vol 1`    — 1 delim (space)
+    //   `Vol. 1`   — 2 delims (dot + space)
+    //   `Vol . 1`  — 3 delims (space + dot + space)
+    // Anything longer is almost certainly not the keyword's number — it's
+    // the keyword being part of the title with a separate number later.
     const MAX_DELIMS: usize = 3;
     let mut i = start;
     let mut delims_skipped = 0usize;
@@ -452,8 +459,11 @@ pub(crate) fn strip_volume_prefix(word: &str) -> Option<&str> {
 /// `chapter`/`chp`/`ch`/`c` (case-insensitive). Examples: `c042`, `Ch11v2`,
 /// `Chapter51v2`, `Chp02`.
 ///
-/// The revision component is silently consumed but not returned — revision
-/// extraction lives in the domain modules if they want it.
+/// The revision component is silently consumed here — [`detect_chapter_revision`]
+/// extracts it separately. Two entry points let a caller populate both
+/// `chapter: NumberRange` and `revision: u8` without a single shared state
+/// machine, at the cost of walking the tokens twice (the tokens list is small
+/// and we'd rather duplicate than introduce a two-valued return).
 pub(crate) fn parse_chapter_num_from_word(word: &str) -> Option<u32> {
     // `chp` tried before `ch` so it matches "chp02" as prefix "chp" + digits "02"
     // rather than "ch" + "p02" (which would fail the all-digit check anyway,
@@ -478,6 +488,43 @@ pub(crate) fn parse_chapter_num_from_word(word: &str) -> Option<u32> {
             && rev_part.chars().all(|c| c.is_ascii_digit())
         {
             return Some(num);
+        }
+    }
+    None
+}
+
+/// Scan `tokens` for a chapter-with-revision word (`c042v2`, `Chapter11v2`,
+/// `Ch11v2`, `Chp02v3`) and return the revision number (`2`, `3`, …).
+///
+/// Companion to [`parse_chapter_num_from_word`]: that function consumes the
+/// revision suffix but only returns the chapter number; this one pulls out
+/// just the revision so a domain parser can populate `ParsedManga.revision`.
+pub(crate) fn detect_chapter_revision(tokens: &[Token]) -> Option<u8> {
+    for t in tokens {
+        let Token::Word(w) = t else { continue };
+        if let Some(rev) = chapter_revision_from_word(w) {
+            return Some(rev);
+        }
+    }
+    None
+}
+
+fn chapter_revision_from_word(word: &str) -> Option<u8> {
+    for prefix in ["chapter", "chp", "ch", "c"] {
+        let Some(rest) = strip_prefix_ignore_ascii_case(word, prefix) else {
+            continue;
+        };
+        let digits_end = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if digits_end == 0 {
+            continue;
+        }
+        let after = &rest[digits_end..];
+        if let Some(rev_part) = strip_prefix_ignore_ascii_case(after, "v")
+            && !rev_part.is_empty()
+            && rev_part.chars().all(|c| c.is_ascii_digit())
+            && let Ok(rev) = rev_part.parse::<u8>()
+        {
+            return Some(rev);
         }
     }
     None

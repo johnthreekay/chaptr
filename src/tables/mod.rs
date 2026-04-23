@@ -7,4 +7,7 @@
 
 pub mod ln_publishers;
 pub mod ln_scanners;
-pub mod scanlator_groups;
+
+// `scanlator_groups` existed briefly as an empty placeholder module — removed
+// in 1.1.0 because `manga::detect_group` never called into it. Add a fresh
+// module if/when a known-groups canonicalization becomes load-bearing.

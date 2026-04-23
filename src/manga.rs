@@ -59,7 +59,13 @@ pub struct ParsedManga<'a> {
     /// Source provenance (Digital, MangaPlus, scan, etc.).
     pub source: Option<MangaSource>,
     pub language: Option<Language>,
-    /// Revision marker (`v2`, `v3`) — distinct from volume number.
+    /// Revision marker extracted from a chapter suffix (`Chapter11v2` → 2,
+    /// `c042v3` → 3). Distinct from volume number. Populated by
+    /// [`crate::common::detect_chapter_revision`].
+    ///
+    /// This is the signal Ryokan-style upgrade detection keys off:
+    /// `Chapter11v2` is a newer release of the same chapter as `Chapter11`,
+    /// so `(chapter, group)` equality + higher `revision` means "upgrade".
     pub revision: Option<u8>,
     pub is_oneshot: bool,
     /// Edition marker: `Omnibus`, `Uncensored`, `Omnibus Edition`.
@@ -107,7 +113,7 @@ pub fn parse(filename: &str) -> ParsedManga<'_> {
         group: detect_group(&tokens),
         source: detect_source(&tokens),
         language: None,
-        revision: None,
+        revision: common::detect_chapter_revision(&tokens),
         is_oneshot: false,
         edition: detect_edition(&tokens),
         extension: detect_extension(filename),
@@ -124,13 +130,68 @@ fn detect_group<'a>(tokens: &[Token<'a>]) -> Option<&'a str> {
     for t in tokens {
         if let Token::Bracketed(content) = t
             && !content.is_empty()
-            && !common::contains_volume_keyword(content)
+            && !is_non_group_bracket(content)
         {
             return Some(*content);
         }
     }
     None
 }
+
+/// True when a bracketed content string is *not* a release-group name but
+/// rather one of the adjacent bracket-shaped things that show up in real
+/// filenames — volume markers, edition tags, format/content tags
+/// (`[Full Color]`, `[B&W]`, `[Raw]`), language tags (`[English]`), or
+/// source tags (`[Digital]`, `[Viz Media]`).
+///
+/// Pre-v1.1 `detect_group` only skipped volume keywords, which caused
+/// AKIRA `[Full Color] [Darkhorse]` to return `"Full Color"` as group.
+fn is_non_group_bracket(content: &str) -> bool {
+    let lower = content.to_ascii_lowercase();
+
+    if common::contains_volume_keyword(content) {
+        return true;
+    }
+    if EDITION_KEYWORDS.contains(&lower.as_str()) {
+        return true;
+    }
+    if FORMAT_TAGS.contains(&lower.as_str()) {
+        return true;
+    }
+    if source_from_content(content).is_some() {
+        return true;
+    }
+    false
+}
+
+/// Brackets that carry format/content/language metadata rather than a
+/// scanlation-group name. Exact-match (case-insensitive) against the full
+/// bracket content.
+///
+/// Not exhaustive — corpus-driven: entries added as real false-positive
+/// cases surface.
+const FORMAT_TAGS: &[&str] = &[
+    "full color",
+    "colored",
+    "color",
+    "b&w",
+    "bw",
+    "hd",
+    "hi-res",
+    "uhd",
+    "raw",
+    "raws",
+    "manga",
+    "audiobook",
+    "english",
+    "japanese",
+    "chinese",
+    "korean",
+    "french",
+    "spanish",
+    "german",
+    "italian",
+];
 
 /// Patterns that map bracketed/parenthesized content to a `MangaSource`.
 /// Matches on exact equality OR prefix-followed-by-space-or-hyphen, so
@@ -215,16 +276,26 @@ fn detect_source(tokens: &[Token]) -> Option<MangaSource> {
             Token::Parenthesized(s) | Token::Bracketed(s) => *s,
             _ => continue,
         };
-        let lower = content.to_ascii_lowercase();
-        for (pattern, source) in SOURCE_PATTERNS {
-            if lower == *pattern {
-                return Some(*source);
-            }
-            if let Some(rest) = lower.strip_prefix(*pattern)
-                && matches!(rest.chars().next(), Some('-' | ' '))
-            {
-                return Some(*source);
-            }
+        if let Some(source) = source_from_content(content) {
+            return Some(source);
+        }
+    }
+    None
+}
+
+/// Match a single bracket/paren content string against [`SOURCE_PATTERNS`].
+/// Extracted so `detect_group`'s skip list can reuse the same test without
+/// iterating all tokens again.
+fn source_from_content(content: &str) -> Option<MangaSource> {
+    let lower = content.to_ascii_lowercase();
+    for (pattern, source) in SOURCE_PATTERNS {
+        if lower == *pattern {
+            return Some(*source);
+        }
+        if let Some(rest) = lower.strip_prefix(*pattern)
+            && matches!(rest.chars().next(), Some('-' | ' '))
+        {
+            return Some(*source);
         }
     }
     None
@@ -380,12 +451,28 @@ mod tests {
 
     #[test]
     fn chapter_revision_suffix_chapter_n_v_n() {
-        // `Chapter11v2` = chapter 11 (revision silently consumed).
-        assert_eq!(
-            parse("Yumekui-Merry_DKThias_Chapter11v2.zip").chapter,
-            Some(single(ch(11)))
-        );
-        assert_eq!(parse("Title c042v2.zip").chapter, Some(single(ch(42))));
+        // `Chapter11v2` = chapter 11 with revision 2. Both the chapter
+        // number and the revision should be extracted.
+        let p = parse("Yumekui-Merry_DKThias_Chapter11v2.zip");
+        assert_eq!(p.chapter, Some(single(ch(11))));
+        assert_eq!(p.revision, Some(2));
+
+        let p = parse("Title c042v2.zip");
+        assert_eq!(p.chapter, Some(single(ch(42))));
+        assert_eq!(p.revision, Some(2));
+    }
+
+    #[test]
+    fn chapter_revision_absent_returns_none() {
+        // No `v\d+` suffix → revision is None.
+        let p = parse("Title c042.zip");
+        assert_eq!(p.revision, None);
+    }
+
+    #[test]
+    fn chapter_revision_higher_numbers() {
+        let p = parse("Title Chapter51v3.zip");
+        assert_eq!(p.revision, Some(3));
     }
 
     #[test]
@@ -748,6 +835,34 @@ mod tests {
         // isn't scanned as plain Word tokens.
         let p = parse("AKIRA - c003 (v01) [Full Color] [Darkhorse].cbz");
         assert_eq!(p.edition, None);
+    }
+
+    #[test]
+    fn group_skips_format_tag_bracket() {
+        // Regression guard for the 1.0 review finding: pre-fix, detect_group
+        // returned "Full Color" because it was the first non-volume-keyword
+        // bracket. Now [Full Color] is recognized as a format tag and
+        // skipped; the group resolves to [Darkhorse].
+        let p = parse("AKIRA - c003 (v01) [Full Color] [Darkhorse].cbz");
+        assert_eq!(p.group, Some("Darkhorse"));
+    }
+
+    #[test]
+    fn group_skips_source_bracket() {
+        // [Digital] is a source tag, not a group — even though it's a
+        // bracket and not a paren.
+        let p = parse("Title v01 [Digital] [Shadowcat-Empire]");
+        assert_eq!(p.group, Some("Shadowcat-Empire"));
+        assert_eq!(p.source, Some(MangaSource::Digital));
+    }
+
+    #[test]
+    fn group_skips_language_tag_bracket() {
+        // [English] is a language/format tag, not a group.
+        let p = parse("[xPearse] Kyochuu Rettou Volume 1 [English] [Manga] [Volume Scans]");
+        // Leading [xPearse] is the group. Trailing [English], [Manga],
+        // [Volume Scans] are all tags / vol-keyword-containing, not groups.
+        assert_eq!(p.group, Some("xPearse"));
     }
 
     #[test]
