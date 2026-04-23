@@ -1,0 +1,85 @@
+[
+  {
+    "input": "[Unpaid Ferryman] Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e | Classroom of the Elite v01-11 (2022-2024) (Digital) (LuCaZ)",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "group": "Unpaid Ferryman",
+      "volume_range": "1-11",
+      "year_range": "2022-2024",
+      "is_digital": true,
+      "scanner": "LuCaZ"
+    },
+    "_model_gap": "ParsedNovel has no `group` field (leading bracket is a release-group/uploader, distinct from trailing-paren `scanner`). Year is single u16 but this filename has a range."
+  },
+  {
+    "input": "Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e / Classroom of the Elite v01-10 (2022-2024) (Digital) (LuCaZ)",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1-10",
+      "year_range": "2022-2024",
+      "is_digital": true,
+      "scanner": "LuCaZ"
+    },
+    "_note": "Same series as preceding entry, different volume cap and no leading group. Useful for dupe-detection tests."
+  },
+  {
+    "input": "Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e [LN Vol. 1-9] PDFs",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1-9"
+    },
+    "_model_gap": "Volume range expressed inside `[LN Vol. 1-9]` rather than the `v01-09` form. Explicit `LN` tag and trailing `PDFs` literal (no actual extension token)."
+  },
+  {
+    "input": "Youkoso Jitsuryoku/Classroom of the Elite (LN) Vol 1-9",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1-9"
+    },
+    "_note": "`/` separator between Japanese and English title with no surrounding spaces. `(LN)` parenthetical tag. `Vol 1-9` form (space-separated, no leading v)."
+  },
+  {
+    "input": "Youjo Senki | The Saga of Tanya the Evil v24-27 (2024-2025) (Digital) (Ushi)",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "24-27",
+      "year_range": "2024-2025",
+      "is_digital": true,
+      "scanner": "Ushi"
+    },
+    "_note": "`|` separator between titles. Mid-series volume range (not starting at 1)."
+  },
+  {
+    "input": "Youjo Senki / The Saga of Tanya the Evil v01-11 [Yen Press] [LuCaZ]",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1-11",
+      "publisher": "Yen Press",
+      "scanner": "LuCaZ"
+    },
+    "_note": "Canonical Kavita-shape Yen Press + LuCaZ release. No year, no Digital tag. Publisher and scanner both in brackets."
+  },
+  {
+    "input": "Youjo Senki / The Saga of Tanya the Evil v01-20 (2018-2023) (Digital) (LuCaZ)",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1-20",
+      "year_range": "2018-2023",
+      "is_digital": true,
+      "scanner": "LuCaZ"
+    },
+    "_note": "Same series as preceding, different release shape (parens not brackets, year present, volume cap differs). Important dupe-detection case."
+  },
+  {
+    "input": "[Unpaid Ferryman] Youjo Senki | The Saga of Tanya the Evil v01-23 (2018-2024) (Digital) (LuCaZ)",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "group": "Unpaid Ferryman",
+      "volume_range": "1-23",
+      "year_range": "2018-2024",
+      "is_digital": true,
+      "scanner": "LuCaZ"
+    },
+    "_model_gap": "Same `group` + `scanner` distinction as the first entry. Establishes the pattern across two different series — not a one-off."
+  }
+]

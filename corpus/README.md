@@ -15,6 +15,15 @@ fabricating richer expectations we can't verify.
 | `manga_kavita.json` | Kavita `MangaParsingTests.cs` | 350 | one of: `volume`, `series`, `chapter`, `edition` (per-entry, tagged in `source`) | GPL-3.0 |
 | `novel_kavita.json` | Kavita `BookParsingTests.cs` | 5 | `volume` or `series` | GPL-3.0 |
 | `chapters_mihon.json` | Mihon `ChapterRecognitionTest.kt` | 54 | `chapter` as `f64` | Apache-2.0 |
+| `novel_nyaa.json` | Hand-picked from Nyaa scrape | 8 | full-struct partial (group, volume_range, year_range, publisher, scanner, is_digital) | (input is filename metadata; assertions are ours) |
+
+Hand-picked entries (`novel_nyaa.json`) use a richer per-entry expected
+shape than the upstream-lifted files because we get to assert anything
+the filename clearly states. Some entries carry `_model_gap` notes when
+the filename surfaces a `ParsedNovel` field we don't currently model
+(release-group bracket separate from scanner, year ranges, volume ranges
+expressed in non-`v01-09` forms). Those gaps drive the model — when the
+parser pass lands, we extend `ParsedNovel` accordingly.
 
 Kavita's `DefaultParserTests.cs` was inspected and excluded — its fixtures are
 folder-path strings (`/manga/Btooom!/Vol.1/Chapter 1/1.cbz`), not pure
