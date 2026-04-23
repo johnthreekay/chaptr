@@ -1,0 +1,16 @@
+[package]
+name = "chaptr"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.95"
+description = "Filename tokenizer for manga, manhwa, manhua, and light novels"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/johnthreekay/chaptr"
+readme = "README.md"
+keywords = ["manga", "lightnovel", "parser", "tokenizer", "filename"]
+categories = ["parser-implementations", "text-processing"]
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
