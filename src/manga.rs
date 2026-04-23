@@ -6,11 +6,13 @@
 //!
 //! **In scope**: extension, volume (single-token `v01`, multi-token `Vol 1`,
 //! decimal `v03.5`, range `v01-09`, also `(v01)` and `[Volume 11]` nested
-//! forms), chapter (same prefixed patterns under `c`/`Ch`/`Chapter` plus
-//! revision-suffix `Chapter11v2` and a bare-number fallback for
+//! forms), chapter (same prefixed patterns under `c`/`Ch`/`Chp`/`Chapter`
+//! plus revision-suffix `Chapter11v2` and a bare-number fallback for
 //! `Beelzebub_01_[Noodles].zip`-style filenames), group (first non-volume
-//! bracketed token), source (`Digital`, `MangaPlus`). Range validation
-//! rejects backward ranges (`vol_356-1` parses as 356, not 356-1).
+//! bracketed token), source (`Digital`, `MangaPlus`), title (slice from
+//! after the leading group bracket up to the first marker, trailing
+//! bracket, or extension dot; underscores normalized to spaces). Range
+//! validation rejects backward ranges (`vol_356-1` parses as 356, not 356-1).
 //!
 //! Single-letter prefixes `s` (Tower of God's `S01`) and `t` (French `t6`,
 //! Batman `T2000`) are recognized — only `<letter>\d+` matches, so titles
@@ -36,15 +38,20 @@
 //! `MangaSource` (Viz / Kodansha / Lezhin / Naver / Kakao). These come back
 //! as the corpus pass-rate test pushes them up the priority list.
 
+use std::borrow::Cow;
+
 use crate::lexer::{Token, tokenize};
 use crate::{ChapterNumber, Language, NumberRange};
 
 /// Structured fields parsed from a single manga filename.
 ///
-/// String fields borrow from the input (`'a`). Construct via [`parse`].
+/// String fields borrow from the input (`'a`) where possible. The `title`
+/// field is a `Cow` because Kavita-style normalization replaces `_` with ` `
+/// (`B_Gata_H_Kei` → `"B Gata H Kei"`) — we borrow the original slice when
+/// no replacement is needed, and only allocate when it is.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParsedManga<'a> {
-    pub title: Option<&'a str>,
+    pub title: Option<Cow<'a, str>>,
     /// Volume designator: `v01`, `v01-03`.
     pub volume: Option<NumberRange>,
     /// Chapter designator: `c045`, `c001-010`, `c045.5`.
@@ -87,7 +94,7 @@ pub enum MangaSource {
 pub fn parse(filename: &str) -> ParsedManga<'_> {
     let tokens = tokenize(filename);
     ParsedManga {
-        title: None,
+        title: detect_title(filename, &tokens),
         volume: detect_volume(&tokens),
         chapter: detect_chapter(&tokens),
         group: detect_group(&tokens),
@@ -359,6 +366,163 @@ fn parse_range_end(tokens: &[Token], pos: usize, start: ChapterNumber) -> Option
     Some(end)
 }
 
+/// Find the title slice within `filename`, returning the cleaned form.
+///
+/// Algorithm:
+///   1. `title_end` = byte position of the first marker token, the first
+///      non-leading bracket/paren, or (if none) the extension dot.
+///   2. `title_start` = position right after the leading group bracket if
+///      one is present at the start; otherwise 0.
+///   3. Slice `filename[title_start..title_end]`, trim surrounding junk
+///      characters, replace `_` with ` `.
+///
+/// Returns `None` when the resulting slice is empty.
+fn detect_title<'a>(filename: &'a str, tokens: &[Token<'a>]) -> Option<Cow<'a, str>> {
+    let title_end = find_title_end(filename, tokens);
+    let title_start = find_title_start(filename, tokens);
+    if title_start >= title_end {
+        return None;
+    }
+    let raw = filename.get(title_start..title_end)?;
+    let cleaned = clean_title(raw);
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned)
+    }
+}
+
+fn find_title_end(filename: &str, tokens: &[Token<'_>]) -> usize {
+    // Skip the FIRST bracket if it appears before any Word token — that's the
+    // leading group, not a title-end signal. Subsequent brackets/parens DO
+    // signal end-of-title (trailing groups, year tags, source tags, etc.).
+    let mut leading_bracket_skipped = false;
+    let mut seen_word = false;
+    // For the bare-number chapter heuristic (mirroring detect_bare_number_chapter):
+    let mut saw_non_numeric_word = false;
+    let mut prev_was_vol_keyword = false;
+
+    for token in tokens {
+        match token {
+            Token::Word(w) => {
+                seen_word = true;
+                let all_digits = w.chars().all(|c| c.is_ascii_digit());
+
+                // Explicit marker (vol/chapter prefix or keyword, or CJK postfix).
+                let is_marker = strip_volume_prefix(w).is_some()
+                    || is_volume_keyword(w)
+                    || parse_chapter_num_from_word(w).is_some()
+                    || is_chapter_keyword(w)
+                    || find_cjk_marker_number_in_word(w, CJK_VOLUME_MARKERS).is_some()
+                    || find_cjk_marker_number_in_word(w, CJK_CHAPTER_MARKERS).is_some();
+                if is_marker && let Some(pos) = token_position_in(filename, token) {
+                    return pos;
+                }
+
+                // Bare-number chapter (`APOSIMZ 017`, `Beelzebub_172_RHS`,
+                // `Dr. STONE 136`). Same fence as `detect_bare_number_chapter`
+                // — must follow at least one non-numeric Word, not after a
+                // Vol keyword, not year-shaped.
+                if all_digits
+                    && saw_non_numeric_word
+                    && !prev_was_vol_keyword
+                    && let Ok(n) = w.parse::<u32>()
+                    && !looks_like_year(n)
+                    && let Some(pos) = token_position_in(filename, token)
+                {
+                    return pos;
+                }
+
+                if !all_digits {
+                    saw_non_numeric_word = true;
+                }
+                prev_was_vol_keyword = is_volume_keyword(w);
+            }
+            Token::Bracketed(_) | Token::Parenthesized(_) | Token::Curly(_) => {
+                if !seen_word && !leading_bracket_skipped {
+                    leading_bracket_skipped = true;
+                    continue;
+                }
+                if let Some(pos) = token_position_in(filename, token) {
+                    return pos;
+                }
+            }
+            Token::Delimiter(_) => {}
+        }
+    }
+
+    // No marker, no trailing bracket — fall back to the extension dot if
+    // the trailing `.<ext>` is a known manga extension.
+    if let Some(dot) = filename.rfind('.') {
+        let ext = &filename[dot + 1..];
+        if !ext.is_empty()
+            && ext.len() <= 4
+            && MANGA_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
+        {
+            return dot;
+        }
+    }
+    filename.len()
+}
+
+fn find_title_start(filename: &str, tokens: &[Token<'_>]) -> usize {
+    for token in tokens {
+        match token {
+            Token::Delimiter(_) => continue,
+            Token::Bracketed(content) => {
+                // `[Volume 11]` is a marker, not a group; title starts at 0.
+                if contains_volume_keyword(content) {
+                    return 0;
+                }
+                // Otherwise: leading bracket is a group; title starts after `]`.
+                let open_pos = token_position_in(filename, token).unwrap_or(0);
+                return open_pos + 2 + content.len(); // [ + content + ]
+            }
+            _ => return 0,
+        }
+    }
+    0
+}
+
+fn clean_title(s: &str) -> Cow<'_, str> {
+    // Trim leading/trailing punctuation that isn't part of a real title.
+    // Notable inclusions: `_` (delimiter substitute), `,` (e.g. `Corpse Party
+    // Musume,`), `#` (e.g. `Kodoja #001` slices to `Kodoja #`).
+    let trimmed =
+        s.trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '.' | '_' | ',' | '#'));
+    if trimmed.contains('_') {
+        Cow::Owned(trimmed.replace('_', " ").trim().to_owned())
+    } else {
+        Cow::Borrowed(trimmed)
+    }
+}
+
+/// Recover a token's byte position within `filename` via pointer arithmetic.
+///
+/// Tokens carry `&str` slices into `filename`; we reverse `slice.as_ptr() -
+/// filename.as_ptr()` to find the position. For bracketed variants the
+/// stored slice excludes the brackets themselves, so subtract one byte for
+/// the opener (`[`/`(`/`{` are all single-byte ASCII).
+///
+/// Returns `None` for `Delimiter` (no slice to anchor on) and for tokens
+/// that didn't originate from `filename` (e.g. produced by a recursive
+/// `tokenize` of a sub-slice from a different allocation — not a path
+/// chaptr's parser actually takes today, but the guard is cheap).
+fn token_position_in(filename: &str, token: &Token<'_>) -> Option<usize> {
+    let (slice, opener_offset) = match token {
+        Token::Word(s) => (*s, 0),
+        Token::Bracketed(s) | Token::Parenthesized(s) | Token::Curly(s) => (*s, 1),
+        Token::Delimiter(_) => return None,
+    };
+    let base = filename.as_ptr() as usize;
+    let s_ptr = slice.as_ptr() as usize;
+    let pos = s_ptr.checked_sub(base)?;
+    if pos > filename.len() {
+        return None;
+    }
+    pos.checked_sub(opener_offset)
+}
+
 fn detect_group<'a>(tokens: &[Token<'a>]) -> Option<&'a str> {
     for t in tokens {
         if let Token::Bracketed(content) = t
@@ -446,7 +610,10 @@ const VOL_MULTI_TOKEN_KEYWORDS: &[&str] = &[
 
 const CH_MULTI_TOKEN_KEYWORDS: &[&str] = &[
     "ch",
+    "chp",
     "chapter",
+    "chapters",
+    "episode", // Umineko / Noblesse use Episode-style chapter numbering
     "глава",
     "главы", // Russian
 ];
@@ -962,6 +1129,91 @@ mod tests {
         assert_eq!(p.chapter, Some(single(ch(3))));
     }
 
+    // ----- title (v3) -----
+
+    fn title_str<'a>(p: &'a ParsedManga<'a>) -> Option<&'a str> {
+        p.title.as_deref()
+    }
+
+    #[test]
+    fn title_simple_extracts_before_volume_marker() {
+        let p = parse("Killing Bites Vol. 0001 Ch. 0001 - Galactica Scanlations (gb)");
+        assert_eq!(title_str(&p), Some("Killing Bites"));
+    }
+
+    #[test]
+    fn title_underscores_replaced_with_spaces() {
+        // Allocates: Cow::Owned because of the replacement.
+        let p = parse("B_Gata_H_Kei_v01[SlowManga&OverloadScans]");
+        assert_eq!(title_str(&p), Some("B Gata H Kei"));
+        assert!(matches!(p.title, Some(std::borrow::Cow::Owned(_))));
+    }
+
+    #[test]
+    fn title_borrows_when_no_underscore() {
+        // No replacement needed → Cow::Borrowed, zero allocation.
+        let p = parse("BTOOOM! v01 (2013) (Digital) (Shadowcat-Empire)");
+        assert_eq!(title_str(&p), Some("BTOOOM!"));
+        assert!(matches!(p.title, Some(std::borrow::Cow::Borrowed(_))));
+    }
+
+    #[test]
+    fn title_skips_leading_group_bracket() {
+        let p = parse("[xPearse] Kyochuu Rettou Volume 1 [English] [Manga] [Volume Scans]");
+        assert_eq!(title_str(&p), Some("Kyochuu Rettou"));
+    }
+
+    #[test]
+    fn title_stops_at_trailing_bracket_metadata() {
+        let p = parse("Tonikaku Cawaii [Volume 11].cbz");
+        assert_eq!(title_str(&p), Some("Tonikaku Cawaii"));
+    }
+
+    #[test]
+    fn title_falls_back_to_extension_dot_when_no_marker() {
+        let p = parse("100 Years Of Solitude.cbz");
+        // No marker, no trailing bracket, .cbz is a known extension.
+        assert_eq!(title_str(&p), Some("100 Years Of Solitude"));
+    }
+
+    #[test]
+    fn title_bare_number_chapter_stops_title_walk() {
+        // `017` is a bare-number chapter — title should stop there, not
+        // continue to the extension.
+        let p = parse("APOSIMZ 017 (2018) (Digital) (danke-Empire).cbz");
+        assert_eq!(title_str(&p), Some("APOSIMZ"));
+    }
+
+    #[test]
+    fn title_trims_trailing_comma() {
+        // `Kedouin Makoto - Corpse Party Musume, Chapter 19` — title shouldn't
+        // include the trailing comma after `Musume`.
+        let p = parse("Kedouin Makoto - Corpse Party Musume, Chapter 19");
+        assert_eq!(title_str(&p), Some("Kedouin Makoto - Corpse Party Musume"));
+    }
+
+    #[test]
+    fn title_trims_trailing_hash() {
+        // `Kodoja #001 (March 2016)` — title slices to `Kodoja #`, hash should trim off.
+        let p = parse("Kodoja #001 (March 2016)");
+        assert_eq!(title_str(&p), Some("Kodoja"));
+    }
+
+    #[test]
+    fn title_returns_none_when_only_marker() {
+        // `v001` has no title before the marker.
+        let p = parse("v001");
+        assert_eq!(p.title, None);
+    }
+
+    #[test]
+    fn title_handles_cjk() {
+        // CJK title with postfix vol marker — title slice should preserve
+        // the CJK characters intact.
+        let p = parse("スライム倒して300年 1巻");
+        assert_eq!(title_str(&p), Some("スライム倒して300年"));
+    }
+
     // ----- corpus -----
 
     /// Run `parse()` against every Kavita fixture and report per-method pass
@@ -972,11 +1224,12 @@ mod tests {
     #[test]
     fn corpus_kavita_pass_rate() {
         const CORPUS: &str = include_str!("../corpus/manga_kavita.json");
-        // After v2 (CJK markers + Cyrillic/French keywords + `t` prefix) we
-        // hit ~92%. Threshold is set below current measured rate so a real
-        // regression surfaces here, not a few-pp drop from edge-case work.
-        // Raise as the parser improves.
-        const MIN_AGGREGATE_PASS_RATE: f64 = 0.88;
+        // After v3 (title detection + bare-number stop + chp/chapters/episode
+        // keywords + #/comma trim) we hit ~88.6% on 315 entries (added the
+        // 129-entry ParseSeriesTest method). Threshold set below current rate
+        // so a real regression surfaces here, not a few-pp drop from
+        // edge-case work. Raise as the parser improves.
+        const MIN_AGGREGATE_PASS_RATE: f64 = 0.85;
 
         let entries: Vec<serde_json::Value> = serde_json::from_str(CORPUS).unwrap();
 
@@ -1005,7 +1258,11 @@ mod tests {
                     entry.get("expected_chapter").and_then(|v| v.as_str()),
                     parse(input).chapter.as_ref().map(format_range),
                 ),
-                _ => continue, // series, edition not yet implemented
+                "ParseSeriesTest" => (
+                    entry.get("expected_series").and_then(|v| v.as_str()),
+                    parse(input).title.as_deref().map(str::to_owned),
+                ),
+                _ => continue, // edition not yet implemented
             };
 
             // Skip entries with null expectations (Kavita's LooseLeafVolume sentinel)
@@ -1017,7 +1274,10 @@ mod tests {
             let bucket = by_method.entry(method).or_default();
             bucket.total += 1;
 
-            let actual_str = actual_str.unwrap_or_else(|| "None".to_string());
+            // Empty expected (e.g. ParseSeriesTest expects "" for `v001`)
+            // should match a `None` parse result; using unwrap_or_default
+            // maps `None` → `""` so the comparison succeeds.
+            let actual_str = actual_str.unwrap_or_default();
             if actual_str == expected {
                 bucket.pass += 1;
             } else if bucket.failures.len() < 5 {
