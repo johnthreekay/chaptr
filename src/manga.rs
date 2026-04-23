@@ -57,6 +57,10 @@ pub struct ParsedManga<'a> {
     /// Revision marker (`v2`, `v3`) — distinct from volume number.
     pub revision: Option<u8>,
     pub is_oneshot: bool,
+    /// Edition marker: `Omnibus`, `Uncensored`, `Omnibus Edition`.
+    /// Words that appear in `{...}` or `[...]` are NOT counted as edition
+    /// (matching Kavita's fixture convention) — only plain-text Word tokens.
+    pub edition: Option<Cow<'a, str>>,
     /// File extension without the leading dot (`cbz`, `cbr`, `zip`, `7z`, `pdf`).
     pub extension: Option<&'a str>,
 }
@@ -95,6 +99,7 @@ pub fn parse(filename: &str) -> ParsedManga<'_> {
         language: None,
         revision: None,
         is_oneshot: false,
+        edition: detect_edition(&tokens),
         extension: detect_extension(filename),
     }
 }
@@ -147,6 +152,52 @@ const SOURCE_PATTERNS: &[(&str, MangaSource)] = &[
     ("kakao", MangaSource::Kakao),
     ("digital", MangaSource::Digital),
 ];
+
+/// Edition keywords. A `Word` token matching one of these (case-insensitive)
+/// triggers edition detection. If the next non-delimiter Word is `Edition`,
+/// the two combine into `"{Keyword} Edition"` (e.g. `Omnibus Edition`).
+///
+/// Kavita's fixtures only exercise `Omnibus` and `Uncensored`, so that's all
+/// that's implemented here. Extending to `Hardcover` / `Deluxe` / `Annotated`
+/// / `Collector's` etc. is straightforward — add the lowercase form to this
+/// list — but without a test fixture to validate against, the addition is
+/// speculative.
+const EDITION_KEYWORDS: &[&str] = &["omnibus", "uncensored"];
+
+fn detect_edition<'a>(tokens: &[Token<'a>]) -> Option<Cow<'a, str>> {
+    for (i, t) in tokens.iter().enumerate() {
+        let Token::Word(w) = t else { continue };
+        let lower = w.to_ascii_lowercase();
+        if !EDITION_KEYWORDS.contains(&lower.as_str()) {
+            continue;
+        }
+        // Single-word edition: just the keyword.
+        // Compound: keyword + "Edition" with a delimiter between (space or
+        // underscore). Peek forward through delimiters for the next Word.
+        if let Some(next) = next_word_after_delims(tokens, i + 1)
+            && next.eq_ignore_ascii_case("edition")
+        {
+            return Some(Cow::Owned(format!("{w} {next}")));
+        }
+        return Some(Cow::Borrowed(*w));
+    }
+    None
+}
+
+/// Walk forward through any delimiters and return the next `Word` content,
+/// or `None` if we hit a bracket/paren/curly or end-of-tokens. Used by
+/// edition detection to find `Word("Edition")` after `Word("Omnibus")`
+/// regardless of whether the two are separated by spaces or underscores.
+fn next_word_after_delims<'a>(tokens: &[Token<'a>], start: usize) -> Option<&'a str> {
+    for t in tokens.get(start..)? {
+        match t {
+            Token::Delimiter(_) => continue,
+            Token::Word(w) => return Some(*w),
+            _ => return None,
+        }
+    }
+    None
+}
 
 fn detect_source(tokens: &[Token]) -> Option<MangaSource> {
     for t in tokens {
@@ -636,6 +687,65 @@ mod tests {
         assert_eq!(p.title.as_deref(), Some("Accel World"));
     }
 
+    // ----- edition -----
+
+    #[test]
+    fn edition_omnibus_single_word() {
+        let p = parse("Tenjou Tenge Omnibus");
+        assert_eq!(p.edition.as_deref(), Some("Omnibus"));
+    }
+
+    #[test]
+    fn edition_omnibus_before_volume() {
+        let p = parse("Wotakoi - Love is Hard for Otaku Omnibus v01 (2018)");
+        assert_eq!(p.edition.as_deref(), Some("Omnibus"));
+    }
+
+    #[test]
+    fn edition_uncensored() {
+        let p = parse("To Love Ru v01 Uncensored (Ch.001-007)");
+        assert_eq!(p.edition.as_deref(), Some("Uncensored"));
+    }
+
+    #[test]
+    fn edition_omnibus_edition_combo_space_separator() {
+        let p = parse("Chobits Omnibus Edition v01 [Dark Horse]");
+        assert_eq!(p.edition.as_deref(), Some("Omnibus Edition"));
+        // Two-word form forces allocation via Cow::Owned.
+        assert!(matches!(p.edition, Some(Cow::Owned(_))));
+    }
+
+    #[test]
+    fn edition_omnibus_edition_combo_underscore_separator() {
+        // Same content, underscore-delimited — still produces "Omnibus Edition"
+        // (with space), not "Omnibus_Edition".
+        let p = parse("Chobits_Omnibus_Edition_v01_[Dark_Horse]");
+        assert_eq!(p.edition.as_deref(), Some("Omnibus Edition"));
+    }
+
+    #[test]
+    fn edition_ignores_curly_bracket_content() {
+        // `{Full Contact Edition}` is a Curly token; its content isn't
+        // scanned as Word tokens, so no edition is detected. Matches
+        // Kavita's fixture which expects empty edition here.
+        let p = parse("Tenjo Tenge {Full Contact Edition} v01 (2011)");
+        assert_eq!(p.edition, None);
+    }
+
+    #[test]
+    fn edition_ignores_square_bracket_content() {
+        // `[Full Color]` in a bracket isn't an edition — bracket content
+        // isn't scanned as plain Word tokens.
+        let p = parse("AKIRA - c003 (v01) [Full Color] [Darkhorse].cbz");
+        assert_eq!(p.edition, None);
+    }
+
+    #[test]
+    fn edition_absent_returns_none() {
+        let p = parse("Title v01 (Digital).cbz");
+        assert_eq!(p.edition, None);
+    }
+
     #[test]
     fn title_skips_leading_paren_bracket_chain() {
         // `(一般コミック) [奥浩哉] いぬやしき 第09巻` — both leading
@@ -780,7 +890,11 @@ mod tests {
                     entry.get("expected_series").and_then(|v| v.as_str()),
                     parse(input).title.as_deref().map(str::to_owned),
                 ),
-                _ => continue, // edition not yet implemented
+                "ParseEditionTest" => (
+                    entry.get("expected_edition").and_then(|v| v.as_str()),
+                    parse(input).edition.as_deref().map(str::to_owned),
+                ),
+                _ => continue,
             };
 
             let Some(expected) = expected_field else {
