@@ -459,6 +459,81 @@ mod tests {
         assert_eq!(p.chapter, Some(single(ch(3))));
     }
 
+    // ----- v4 edge cases -----
+
+    #[test]
+    fn chapter_kaiju_title_collision() {
+        // `Kaiju No. 8 036` — the `8` is part of the title, not the chapter.
+        // Metadata-lookahead rule: `8` is followed by `036` (digits, not a
+        // group code, not a paren) → not chapter. `036` is followed by
+        // `(2021)` → chapter.
+        let p = parse("Kaiju No. 8 036 (2021) (Digital)");
+        assert_eq!(p.chapter, Some(single(ch(36))));
+    }
+
+    #[test]
+    fn chapter_bare_number_followed_by_group_code() {
+        // `Beelzebub_172_RHS.zip` — `RHS` is an all-uppercase group code,
+        // so `172` is the chapter even without a bracket/paren after.
+        let p = parse("Beelzebub_172_RHS.zip");
+        assert_eq!(p.chapter, Some(single(ch(172))));
+    }
+
+    #[test]
+    fn chapter_bare_number_with_decimal_attached() {
+        // `017.5` — lexer splits as `017`, Delim('.'), `5`. Without the
+        // fast-path in bare_number_followed_by_metadata, the `017` would
+        // be rejected (next non-delim is `5`, not a group code).
+        let p = parse("Goblin Slayer Side Story - Year One 017.5");
+        assert_eq!(p.chapter, Some(single(ch_dec(17, 5))));
+    }
+
+    #[test]
+    fn chapter_bare_number_range_attached() {
+        // `001-003` range — same fast-path reasoning as decimal.
+        let p = parse("Bleach 001-003");
+        assert_eq!(p.chapter, Some(range(ch(1), ch(3))));
+    }
+
+    #[test]
+    fn chapter_russian_glava_postfix() {
+        // `Манга 2 Глава` — Russian has `Глава` as postfix chapter keyword.
+        // Bare-number `2` is followed by `Глава` (chapter keyword) → counts
+        // as metadata-adjacent, so `2` becomes the chapter.
+        let p = parse("Манга 2 Глава");
+        assert_eq!(p.chapter, Some(single(ch(2))));
+    }
+
+    #[test]
+    fn chapter_korean_hwa_marker() {
+        // Korean 화 (talk/chapter) postfix marker.
+        let p = parse("조선왕조실톡 106화");
+        assert_eq!(p.chapter, Some(single(ch(106))));
+    }
+
+    #[test]
+    fn chapter_korean_hoe_marker() {
+        // Korean 회 (round/chapter) postfix marker.
+        let p = parse("자유록 13회");
+        assert_eq!(p.chapter, Some(single(ch(13))));
+    }
+
+    #[test]
+    fn title_accel_world_colon() {
+        // Trailing `:` trimmed from the title (before a volume keyword).
+        let p = parse("Accel World: Vol 1");
+        assert_eq!(p.title.as_deref(), Some("Accel World"));
+    }
+
+    #[test]
+    fn title_skips_leading_paren_bracket_chain() {
+        // `(一般コミック) [奥浩哉] いぬやしき 第09巻` — both leading
+        // brackets/parens should be skipped by title_start, and the chain
+        // of leading bracket-tokens should all be skipped by title_end.
+        let p = parse("(一般コミック) [奥浩哉] いぬやしき 第09巻");
+        assert_eq!(p.title.as_deref(), Some("いぬやしき"));
+    }
+
     // ----- title -----
 
     fn title_str<'a>(p: &'a ParsedManga<'a>) -> Option<&'a str> {
@@ -561,7 +636,7 @@ mod tests {
     #[test]
     fn corpus_kavita_pass_rate() {
         const CORPUS: &str = include_str!("../corpus/manga_kavita.json");
-        const MIN_AGGREGATE_PASS_RATE: f64 = 0.85;
+        const MIN_AGGREGATE_PASS_RATE: f64 = 0.90;
 
         let entries: Vec<serde_json::Value> = serde_json::from_str(CORPUS).unwrap();
 

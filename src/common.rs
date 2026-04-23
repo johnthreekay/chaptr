@@ -54,7 +54,10 @@ pub(crate) const CH_MULTI_TOKEN_KEYWORDS: &[&str] = &[
 /// fixture parity even where the linguistic mapping is debatable.
 pub(crate) const CJK_VOLUME_MARKERS: &[char] = &['巻', '卷', '册', '권', '장'];
 
-pub(crate) const CJK_CHAPTER_MARKERS: &[char] = &['话', '話', '章', '回'];
+/// `회` and `화` are Korean chapter markers — 회 literally means "round"
+/// or "chapter", 화 means "talk/chapter". Both appear postfix-style as in
+/// `13회` (chapter 13) and `106화` (chapter 106).
+pub(crate) const CJK_CHAPTER_MARKERS: &[char] = &['话', '話', '章', '回', '회', '화'];
 
 // ---------- extension detection ----------
 
@@ -159,7 +162,13 @@ fn detect_chapter_in_seq(tokens: &[Token]) -> Option<NumberRange> {
 /// - Must not be year-shaped (1900-2099) — those are almost never chapters
 /// - Must not be immediately preceded by `Vol`/`Volume` keyword
 /// - Combined-token forms like `v05` do *not* block a following bare number
-fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange> {
+/// - **Must be followed by "metadata" — a bracket/paren/curly, an
+///   all-uppercase group-code Word (`RHS`, `MT`, `SCX`), or end-of-tokens.**
+///   Without this check `Kaiju No. 8 036` would pick `8` as chapter (it's
+///   part of the title); with it, `8` is skipped because it's followed by
+///   another digit Word, and `036` is picked because it's followed by
+///   `(2021)`.
+pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange> {
     let mut saw_non_numeric_word = false;
     let mut prev_was_vol_keyword = false;
 
@@ -172,6 +181,7 @@ fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange> {
                     && !prev_was_vol_keyword
                     && let Ok(n) = w.parse::<u32>()
                     && !looks_like_year(n)
+                    && bare_number_followed_by_metadata(tokens, i + 1)
                 {
                     return Some(build_range(tokens, i + 1, n));
                 }
@@ -185,6 +195,53 @@ fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange> {
         }
     }
     None
+}
+
+/// True when the bare number at `start_idx - 1` is "followed by something
+/// chapter-y" rather than "followed by more title text":
+/// - Immediately followed by `.<digits>` or `-<digits>` — decimal / range
+///   extension of this number (`017.5`, `001-003`). Counts as "attached".
+/// - First non-delimiter after is a bracket/paren/curly (`(2021)`, `[MD]`).
+/// - First non-delimiter Word after is an all-uppercase group-code (`RHS`,
+///   `MT`) or a volume/chapter keyword in a postfix position (`Глава`,
+///   `Vol`, `Ch`).
+/// - End of tokens.
+///
+/// Otherwise the bare number is presumed part of the title (`Kaiju No. 8`,
+/// `The 100 Girlfriends`).
+pub(crate) fn bare_number_followed_by_metadata(tokens: &[Token], start_idx: usize) -> bool {
+    // Fast path: `N.<digits>` (decimal) or `N-<digits>` (range). The base
+    // number is "attached to" its decimal/range extension and should be
+    // treated as a candidate (`build_range` will consume the extension).
+    if let Some(Token::Delimiter(c)) = tokens.get(start_idx)
+        && matches!(c, '.' | '-')
+        && let Some(Token::Word(next_w)) = tokens.get(start_idx + 1)
+        && !next_w.is_empty()
+        && next_w.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return true;
+    }
+    for t in &tokens[start_idx.min(tokens.len())..] {
+        match t {
+            Token::Delimiter(_) => continue,
+            Token::Bracketed(_) | Token::Parenthesized(_) | Token::Curly(_) => return true,
+            Token::Word(w) => {
+                return is_group_code_word(w) || is_chapter_keyword(w) || is_volume_keyword(w);
+            }
+        }
+    }
+    true
+}
+
+/// A Word like `RHS` / `MT` / `SCX` — all-uppercase ASCII letters (plus
+/// optional digits) that typically indicate a scanlator group attribution
+/// rather than more title text. Rejects lowercase words like `Girlfriends`,
+/// all-digit words like `036` (no letters = not a code), and empty strings.
+fn is_group_code_word(w: &str) -> bool {
+    !w.is_empty()
+        && w.chars().any(|c| c.is_ascii_alphabetic())
+        && w.chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
 pub(crate) fn looks_like_year(n: u32) -> bool {
@@ -250,6 +307,11 @@ fn parse_range_end(tokens: &[Token], pos: usize, start: ChapterNumber) -> Option
     let Some(Token::Word(num_str)) = tokens.get(pos + 1) else {
         return None;
     };
+    // End must be bare digits. An earlier attempt here accepted
+    // `parse_chapter_num_from_word` as a fallback to support `c01-c04`, but
+    // that regressed `v01-c001[MD]` (volume-range-end matched against the
+    // chapter word `c001`, producing the phantom range `1-1`). The
+    // single-fixture `c01-c04` win wasn't worth the disambiguation cost.
     let end_whole = num_str.parse::<u32>().ok()?;
     let mut end = ChapterNumber::new(end_whole);
     if let Some((dec, _)) = parse_decimal_suffix(tokens, pos + 2) {
@@ -490,15 +552,15 @@ pub(crate) fn detect_title<'a>(
 }
 
 fn find_title_end(filename: &str, tokens: &[Token<'_>], known_extensions: &[&str]) -> usize {
-    // Skip the FIRST bracket if it appears before any Word token — that's the
-    // leading group, not a title-end signal. Subsequent brackets/parens DO
-    // signal end-of-title (trailing groups, year tags, source tags, etc.).
-    let mut leading_bracket_skipped = false;
+    // Skip the LEADING CHAIN of brackets/parens/curlies — e.g. for
+    // `(一般コミック) [奥浩哉] いぬやしき 第09巻` both the paren and the
+    // bracket are metadata, and the title runs from after both. Once we've
+    // seen a Word, any subsequent bracket/paren/curly signals end-of-title.
     let mut seen_word = false;
     let mut saw_non_numeric_word = false;
     let mut prev_was_vol_keyword = false;
 
-    for token in tokens {
+    for (token_index, token) in tokens.iter().enumerate() {
         match token {
             Token::Word(w) => {
                 seen_word = true;
@@ -519,6 +581,7 @@ fn find_title_end(filename: &str, tokens: &[Token<'_>], known_extensions: &[&str
                     && !prev_was_vol_keyword
                     && let Ok(n) = w.parse::<u32>()
                     && !looks_like_year(n)
+                    && bare_number_followed_by_metadata(tokens, token_index + 1)
                     && let Some(pos) = token_position_in(filename, token)
                 {
                     return pos;
@@ -530,8 +593,7 @@ fn find_title_end(filename: &str, tokens: &[Token<'_>], known_extensions: &[&str
                 prev_was_vol_keyword = is_volume_keyword(w);
             }
             Token::Bracketed(_) | Token::Parenthesized(_) | Token::Curly(_) => {
-                if !seen_word && !leading_bracket_skipped {
-                    leading_bracket_skipped = true;
+                if !seen_word {
                     continue;
                 }
                 if let Some(pos) = token_position_in(filename, token) {
@@ -555,6 +617,10 @@ fn find_title_end(filename: &str, tokens: &[Token<'_>], known_extensions: &[&str
 }
 
 fn find_title_start(filename: &str, tokens: &[Token<'_>]) -> usize {
+    // Skip a chain of leading brackets/parens/curlies — e.g. for
+    // `(一般コミック) [奥浩哉] いぬやしき 第09巻` both the paren and the
+    // bracket are metadata and the title starts after them.
+    let mut cursor = 0;
     for token in tokens {
         match token {
             Token::Delimiter(_) => continue,
@@ -564,20 +630,26 @@ fn find_title_start(filename: &str, tokens: &[Token<'_>]) -> usize {
                     return 0;
                 }
                 let open_pos = token_position_in(filename, token).unwrap_or(0);
-                return open_pos + 2 + content.len(); // [ + content + ]
+                cursor = open_pos + 2 + content.len();
             }
-            _ => return 0,
+            Token::Parenthesized(content) | Token::Curly(content) => {
+                let open_pos = token_position_in(filename, token).unwrap_or(0);
+                cursor = open_pos + 2 + content.len();
+            }
+            _ => return cursor,
         }
     }
-    0
+    cursor
 }
 
 fn clean_title(s: &str) -> Cow<'_, str> {
     // Trim leading/trailing punctuation that isn't part of a real title.
     // Notable inclusions: `_` (delimiter substitute), `,` (e.g. `Corpse Party
-    // Musume,`), `#` (e.g. `Kodoja #001` slices to `Kodoja #`).
-    let trimmed =
-        s.trim_matches(|c: char| c.is_whitespace() || matches!(c, '-' | '.' | '_' | ',' | '#'));
+    // Musume,`), `#` (e.g. `Kodoja #001` slices to `Kodoja #`), `:` (e.g.
+    // `Accel World:` before a `Vol` tag).
+    let trimmed = s.trim_matches(|c: char| {
+        c.is_whitespace() || matches!(c, '-' | '.' | '_' | ',' | '#' | ':')
+    });
     if trimmed.contains('_') {
         Cow::Owned(trimmed.replace('_', " ").trim().to_owned())
     } else {
