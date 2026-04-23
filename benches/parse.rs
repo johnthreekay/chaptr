@@ -9,21 +9,29 @@
 //! format; no HTML reports (we disabled plotters to keep the dev-dep
 //! footprint small).
 //!
-//! **Baseline (1.1.0 release, ran on John's dev machine, 2026-04-23):**
+//! **Baselines** (John's dev machine, 2026-04-23):
 //!
 //! ```text
-//! manga::parse/simple         1.10 µs
-//! manga::parse/full grammar   1.53 µs
-//! manga::parse/cjk            2.12 µs
-//! manga::parse/range          1.70 µs
-//! novel::parse/full grammar   0.98 µs
-//! novel::parse/smoke corpus   1.18 ms   (512 entries, ~432 K entries/sec)
+//! Benchmark                    1.1.0      1.2.0      Δ
+//! ─────────────────────────────────────────────────────
+//! manga::parse/simple          1.10 µs    740 ns    −33%
+//! manga::parse/full grammar    1.53 µs    1.03 µs   −33%
+//! manga::parse/cjk             2.12 µs    1.47 µs   −31%
+//! manga::parse/range           1.70 µs    905 ns    −47%
+//! novel::parse/full grammar    980 ns     635 ns    −35%
+//! novel::parse/smoke corpus    1.18 ms    776 µs    −34%
+//!                              (432 K/s)  (660 K/s)
 //! ```
 //!
-//! At ~1-2 µs per parse, a 100-result Nyaa search is <0.2 ms of parsing —
-//! the parser is not the bottleneck. If that changes (e.g. future CJK
-//! work adds allocation per token), bump the numbers in the Baseline
-//! block when you commit.
+//! The 1.2.0 speedup is across-the-board, not just CJK — the prior
+//! `find_cjk_marker_number_in_word` allocated a `Vec<char>` on every call,
+//! which fired once per Word token regardless of whether the word had any
+//! CJK chars. Fixing the CJK path lifted every parse because every parse
+//! walks the CJK-marker pass.
+//!
+//! At <1-1.5 µs per parse, a 100-result Nyaa search is <0.15 ms of
+//! parsing — the parser is not the bottleneck. If that changes, bump the
+//! numbers in this block when you commit.
 
 use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
 

@@ -9,8 +9,12 @@
 //! to know anything caller-specific (e.g. the known-extensions list for the
 //! title-end fallback).
 //!
-//! Visibility is `pub(crate)` throughout — nothing here is part of chaptr's
-//! public API.
+//! Visibility is mostly `pub(crate)` — the three generic detectors
+//! (`detect_volume`, `detect_chapter`, `detect_chapter_revision`) are
+//! `pub` and re-exported from the crate root for consumers who want to
+//! build their own L2 classifier on top of the shared lexer. Everything
+//! else (helpers, keyword tables, title-slicing internals) stays
+//! crate-private.
 
 use std::borrow::Cow;
 
@@ -54,6 +58,15 @@ pub(crate) const CH_MULTI_TOKEN_KEYWORDS: &[&str] = &[
 /// fixture parity even where the linguistic mapping is debatable.
 pub(crate) const CJK_VOLUME_MARKERS: &[char] = &['巻', '卷', '册', '권', '장'];
 
+/// Multi-char CJK volume *prefixes* — positioned before the digits rather
+/// than after, e.g. Korean `시즌3` ("season 3"). Separate from the
+/// single-char postfix markers because the detection algorithm is
+/// different (prefix strip + leading-digits vs scan-for-marker + adjacent-
+/// digits).
+pub(crate) const CJK_VOLUME_PREFIXES: &[&str] = &[
+    "시즌", // Korean: season
+];
+
 /// `회` and `화` are Korean chapter markers — 회 literally means "round"
 /// or "chapter", 화 means "talk/chapter". Both appear postfix-style as in
 /// `13회` (chapter 13) and `106화` (chapter 106).
@@ -79,7 +92,7 @@ pub(crate) fn detect_extension<'a>(filename: &'a str, known: &[&str]) -> Option<
 
 // ---------- volume / chapter detection ----------
 
-pub(crate) fn detect_volume(tokens: &[Token]) -> Option<NumberRange> {
+pub fn detect_volume(tokens: &[Token]) -> Option<NumberRange> {
     // Pass 1: top-level.
     if let Some(r) = detect_volume_in_seq(tokens) {
         return Some(r);
@@ -99,7 +112,7 @@ pub(crate) fn detect_volume(tokens: &[Token]) -> Option<NumberRange> {
     detect_cjk_marker_seq(tokens, CJK_VOLUME_MARKERS)
 }
 
-pub(crate) fn detect_chapter(tokens: &[Token]) -> Option<NumberRange> {
+pub fn detect_chapter(tokens: &[Token]) -> Option<NumberRange> {
     if let Some(r) = detect_chapter_in_seq(tokens) {
         return Some(r);
     }
@@ -129,10 +142,34 @@ fn detect_volume_in_seq(tokens: &[Token]) -> Option<NumberRange> {
             return Some(build_range(tokens, i + 1, start_whole));
         }
 
+        // CJK multi-char prefix: `시즌3`, `시즌34삽화2`. Leading digits
+        // after the prefix are the volume number; any trailing non-digit
+        // tail is ignored (what the corpus expects for 시즌34삽화2 — vol
+        // 34, trailing 삽화2 is noise).
+        if let Some(start_whole) = strip_cjk_prefix_volume(w) {
+            return Some(build_range(tokens, i + 1, start_whole));
+        }
+
         if is_volume_keyword(w)
             && let Some(range) = parse_number_after_marker(tokens, i + 1)
         {
             return Some(range);
+        }
+    }
+    None
+}
+
+fn strip_cjk_prefix_volume(word: &str) -> Option<u32> {
+    for prefix in CJK_VOLUME_PREFIXES {
+        let Some(rest) = word.strip_prefix(prefix) else {
+            continue;
+        };
+        let digits_end = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if digits_end == 0 {
+            continue;
+        }
+        if let Ok(n) = rest[..digits_end].parse::<u32>() {
+            return Some(n);
         }
     }
     None
@@ -176,6 +213,9 @@ pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange
         match t {
             Token::Word(w) => {
                 let all_digits = w.chars().all(|c| c.is_ascii_digit());
+
+                // Pure-integer case: gets the full build_range treatment
+                // (decimal + range consumption from following tokens).
                 if all_digits
                     && saw_non_numeric_word
                     && !prev_was_vol_keyword
@@ -185,6 +225,23 @@ pub(crate) fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange
                 {
                     return Some(build_range(tokens, i + 1, n));
                 }
+
+                // Alpha-suffix case: `153b` → 153.5 (Kavita convention).
+                // Only triggers when the word has a single lowercase letter
+                // tail attached to digits — parse_extended_number's other
+                // branches (bare digits, CJK-tail) are handled above or
+                // not applicable here.
+                if !all_digits
+                    && saw_non_numeric_word
+                    && !prev_was_vol_keyword
+                    && let Some(n) = parse_extended_number(w)
+                    && n.decimal.is_some()
+                    && !looks_like_year(n.whole)
+                    && bare_number_followed_by_metadata(tokens, i + 1)
+                {
+                    return Some(NumberRange::single(n));
+                }
+
                 if !all_digits {
                     saw_non_numeric_word = true;
                 }
@@ -246,6 +303,34 @@ fn is_group_code_word(w: &str) -> bool {
 
 pub(crate) fn looks_like_year(n: u32) -> bool {
     (1900..=2099).contains(&n)
+}
+
+/// Parse a Word as a `ChapterNumber`, tolerating non-digit suffixes:
+///
+/// - Bare digits (`"153"`) → `ChapterNumber::new(153)`
+/// - Digits + a single ASCII lowercase letter (`"153b"`) →
+///   `ChapterNumber::with_decimal(153, 5)` (Kavita convention: any single
+///   alpha suffix = .5, per `Beelzebub_153b_RHS.zip` → expected 153.5)
+/// - Digits + any other non-digit suffix (`"4삽화2"`, `"4th"`) →
+///   `ChapterNumber::new(4)` — just the leading digits, rest is noise
+///
+/// Returns `None` for words that don't start with digits (`"v05"`, `"Title"`).
+pub(crate) fn parse_extended_number(word: &str) -> Option<ChapterNumber> {
+    let digits_end = word.bytes().take_while(u8::is_ascii_digit).count();
+    if digits_end == 0 {
+        return None;
+    }
+    let whole = word.get(..digits_end)?.parse::<u32>().ok()?;
+    let suffix = word.get(digits_end..)?;
+    if suffix.is_empty() {
+        return Some(ChapterNumber::new(whole));
+    }
+    // Single lowercase ASCII letter → Kavita's "extra" convention → .5
+    if suffix.len() == 1 && suffix.as_bytes()[0].is_ascii_lowercase() {
+        return Some(ChapterNumber::with_decimal(whole, 5));
+    }
+    // Any other suffix → just the leading digits
+    Some(ChapterNumber::new(whole))
 }
 
 // ---------- number builders ----------
@@ -314,15 +399,21 @@ fn parse_range_end(tokens: &[Token], pos: usize, start: ChapterNumber) -> Option
     let Some(Token::Word(num_str)) = tokens.get(pos + 1) else {
         return None;
     };
-    // End must be bare digits. An earlier attempt here accepted
-    // `parse_chapter_num_from_word` as a fallback to support `c01-c04`, but
-    // that regressed `v01-c001[MD]` (volume-range-end matched against the
-    // chapter word `c001`, producing the phantom range `1-1`). The
-    // single-fixture `c01-c04` win wasn't worth the disambiguation cost.
-    let end_whole = num_str.parse::<u32>().ok()?;
-    let mut end = ChapterNumber::new(end_whole);
-    if let Some((dec, _)) = parse_decimal_suffix(tokens, pos + 2) {
-        end = ChapterNumber::with_decimal(end_whole, dec);
+    // `parse_extended_number` handles bare digits, alpha-suffix (.5),
+    // and any-other-suffix (leading digits only) in one shot.
+    //
+    // An earlier revision also accepted the full `parse_chapter_num_from_word`
+    // as a fallback so ranges like `c01-c04` → 1..=4 would work, but that
+    // regressed `v01-c001[MD]` (volume-range-end matched the chapter word
+    // `c001`, producing a phantom "1-1"). The single-fixture c01-c04 win
+    // wasn't worth the cross-domain disambiguation cost.
+    let mut end = parse_extended_number(num_str)?;
+    // If the end was bare digits with no alpha suffix, allow a trailing
+    // `.<dec>` decimal from the following tokens (rare: `c001-008.5`).
+    if end.decimal.is_none()
+        && let Some((dec, _)) = parse_decimal_suffix(tokens, pos + 2)
+    {
+        end = ChapterNumber::with_decimal(end.whole, dec);
     }
     // Reject backward ranges (Mangapy `vol_356-1` syntax).
     if end < start {
@@ -365,33 +456,43 @@ fn detect_cjk_marker_seq(tokens: &[Token], markers: &[char]) -> Option<NumberRan
 /// Tries postfix-style first (digits before marker), then prefix-style
 /// (digits after). Public at crate level because the title-end scanner
 /// also uses it to recognize CJK-marked Words.
+///
+/// Zero-alloc implementation (1.2.0): uses `char_indices()` + byte-level
+/// ASCII digit scan + `str::get` slicing, avoiding the `Vec<char>` +
+/// `String::from_iter` allocations the 1.0/1.1 version paid per call.
+/// ASCII digit bytes (0x30-0x39) are always single-byte in UTF-8 and
+/// can't appear inside a multi-byte CJK char, so byte-walking backward
+/// through digit bytes is safe and stays on char boundaries.
 pub(crate) fn find_cjk_marker_number_in_word(word: &str, markers: &[char]) -> Option<u32> {
-    let chars: Vec<char> = word.chars().collect();
-    for (i, c) in chars.iter().enumerate() {
-        if !markers.contains(c) {
+    let bytes = word.as_bytes();
+    for (marker_start, c) in word.char_indices() {
+        if !markers.contains(&c) {
             continue;
         }
-        // Postfix-style: <digits><marker>
-        let mut start = i;
-        while start > 0 && chars[start - 1].is_ascii_digit() {
-            start -= 1;
+        let marker_end = marker_start + c.len_utf8();
+
+        // Postfix-style: digits immediately before the marker.
+        let mut digit_start = marker_start;
+        while digit_start > 0 && bytes[digit_start - 1].is_ascii_digit() {
+            digit_start -= 1;
         }
-        if start < i {
-            let s: String = chars[start..i].iter().collect();
-            if let Ok(n) = s.parse::<u32>() {
-                return Some(n);
-            }
+        if digit_start < marker_start
+            && let Some(digits) = word.get(digit_start..marker_start)
+            && let Ok(n) = digits.parse::<u32>()
+        {
+            return Some(n);
         }
-        // Prefix-style: <marker><digits>
-        let mut end = i + 1;
-        while end < chars.len() && chars[end].is_ascii_digit() {
-            end += 1;
+
+        // Prefix-style: digits immediately after the marker.
+        let mut digit_end = marker_end;
+        while digit_end < bytes.len() && bytes[digit_end].is_ascii_digit() {
+            digit_end += 1;
         }
-        if end > i + 1 {
-            let s: String = chars[i + 1..end].iter().collect();
-            if let Ok(n) = s.parse::<u32>() {
-                return Some(n);
-            }
+        if digit_end > marker_end
+            && let Some(digits) = word.get(marker_end..digit_end)
+            && let Ok(n) = digits.parse::<u32>()
+        {
+            return Some(n);
         }
     }
     None
@@ -499,7 +600,7 @@ pub(crate) fn parse_chapter_num_from_word(word: &str) -> Option<u32> {
 /// Companion to [`parse_chapter_num_from_word`]: that function consumes the
 /// revision suffix but only returns the chapter number; this one pulls out
 /// just the revision so a domain parser can populate `ParsedManga.revision`.
-pub(crate) fn detect_chapter_revision(tokens: &[Token]) -> Option<u8> {
+pub fn detect_chapter_revision(tokens: &[Token]) -> Option<u8> {
     for t in tokens {
         let Token::Word(w) = t else { continue };
         if let Some(rev) = chapter_revision_from_word(w) {
@@ -614,6 +715,7 @@ fn find_title_end(filename: &str, tokens: &[Token<'_>], known_extensions: &[&str
                 let all_digits = w.chars().all(|c| c.is_ascii_digit());
 
                 let is_marker = strip_volume_prefix(w).is_some()
+                    || strip_cjk_prefix_volume(w).is_some()
                     || is_volume_keyword(w)
                     || parse_chapter_num_from_word(w).is_some()
                     || is_chapter_keyword(w)

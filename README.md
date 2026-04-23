@@ -108,11 +108,11 @@ Manhwa / manhua live in the `manga` module. Grammar is close enough that splitti
 All documented in the module-level doc comments. The ones that show up as corpus failures:
 
 - **Thai `เล่ม`** — Ryokan's intended upstream (Nyaa English-translated) doesn't carry Thai script; supporting it would need lexer changes for Thai combining marks
-- **Korean `시즌`** — multi-char prefix form (`시즌34삽화2`) not handled
-- **Alpha-suffix decimals** — `Beelzebub_153b` → 153.5 (Kavita's convention) not yet implemented
 - **X-suffix ranges** — `c001-006x1` (rare Kavita syntax)
 - **Kavita "special" empty-series cases** — filenames like `Love Hina - Special.cbz` where Kavita expects empty series; no oneshot/special detection yet
 - **Title-embedded numbers in some edge cases** — `Hentai Ouji to Warawanai Neko.` (trailing dot preserved by Kavita, stripped by us)
+
+Closed in 1.2.0: Korean `시즌` multi-char prefix (`시즌34삽화2` → volume 34), alpha-suffix decimals (`Beelzebub_153b` → 153.5 per Kavita convention).
 
 ## Design
 
@@ -130,13 +130,17 @@ allocates when underscore-to-space normalization forces it).
 
 | Bench | Time |
 |---|---|
-| `manga::parse` on a typical filename | ~1.5 µs |
-| `manga::parse` with CJK markers | ~2.1 µs |
-| `novel::parse` on a typical filename | ~1.0 µs |
-| 512-entry LN smoke corpus batch | ~1.2 ms (~430 K entries/sec) |
+| `manga::parse` on a typical filename | ~1.0 µs |
+| `manga::parse` with CJK markers | ~1.5 µs |
+| `novel::parse` on a typical filename | ~0.6 µs |
+| 512-entry LN smoke corpus batch | ~0.8 ms (~660 K entries/sec) |
 
 For a 100-torrent Nyaa search result batch, total parse time is under
-0.2 ms — the parser isn't the bottleneck in a search pipeline.
+0.15 ms — the parser isn't the bottleneck in a search pipeline.
+
+(1.2.0 dropped ~33% off every bench by removing a per-Word `Vec<char>`
+allocation on the CJK marker check path, which every parse walks through
+regardless of whether the word has CJK chars.)
 
 Run `cargo bench` for fresh numbers on your hardware. The `benches/`
 directory has a [Criterion](https://github.com/bheisler/criterion.rs)

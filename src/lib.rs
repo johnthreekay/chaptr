@@ -14,6 +14,28 @@ pub mod tables;
 
 mod common;
 
+/// Re-exported detector building blocks for consumers who want to build
+/// their own L2 classifier on top of the shared lexer.
+///
+/// The high-level entry points (`manga::parse`, `novel::parse`) wire these
+/// together with domain-specific extras. If you need to parse a filename
+/// family chaptr doesn't cover (Korean webtoon archives, custom media
+/// naming conventions, arbitrary sub-flavors of the same broad shape),
+/// call [`lexer::tokenize`] on the input and then these:
+///
+/// ```rust
+/// use chaptr::{lexer::tokenize, detect_volume, detect_chapter};
+///
+/// let tokens = tokenize("[Group] Title v03 c042.5 (Digital).cbz");
+/// let vol = detect_volume(&tokens);   // Some(NumberRange { start: 3, end: None })
+/// let ch  = detect_chapter(&tokens);  // Some(NumberRange { start: 42.5, end: None })
+/// ```
+///
+/// [`detect_chapter_revision`] pulls the `v\d+` suffix from forms like
+/// `Chapter11v2` → `Some(2)` — the signal upgrade-detection pipelines
+/// key off.
+pub use common::{detect_chapter, detect_chapter_revision, detect_volume};
+
 /// A chapter or volume number.
 ///
 /// Stored as `(whole, Option<decimal>)` rather than `f64` because:
