@@ -12,6 +12,8 @@ pub mod manga;
 pub mod novel;
 pub mod tables;
 
+mod common;
+
 /// A chapter or volume number.
 ///
 /// Stored as `(whole, Option<decimal>)` rather than `f64` because:

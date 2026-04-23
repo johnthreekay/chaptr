@@ -4,7 +4,7 @@
 //! responsible for converting a publisher's release into a clean EPUB. Seed list
 //! comes from the design doc's named examples; expand as the corpus grows.
 
-const SCANNERS: &[&str] = &["LuCaZ", "Stick"];
+const SCANNERS: &[&str] = &["LuCaZ", "Stick", "Ushi", "Oak", "nao"];
 
 /// Lookup a scanner credit by name, case-insensitively. Returns the canonical form.
 #[must_use]
