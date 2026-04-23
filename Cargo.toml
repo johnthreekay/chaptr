@@ -12,5 +12,10 @@ categories = ["parser-implementations", "text-processing"]
 
 [dependencies]
 
+[dev-dependencies]
+# Used only by the corpus-driven test in src/manga.rs to load
+# corpus/manga_kavita.json. Not pulled into release builds.
+serde_json = "1"
+
 [lints.rust]
 unsafe_code = "forbid"

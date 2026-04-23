@@ -3,8 +3,22 @@
 //! Manhwa/manhua live here too — their filename grammar overlaps closely with manga.
 //! Source-tag differences (Lezhin / Naver / Kakao for manhwa) are carried by
 //! [`MangaSource`], not by a separate module.
+//!
+//! **v0 scope** (this commit): extension, volume (single-token `v01` and
+//! multi-token `Vol 1` forms, with decimal `v03.5` and range `v01-09`),
+//! chapter (same patterns under `c`/`Ch`/`Chapter`), group (first non-volume
+//! bracketed token), source (`Digital`, `MangaPlus`).
+//!
+//! **Out of scope for v0** (intentional, documented gaps): title extraction,
+//! language tags, revision suffixes (`v2` after a chapter), oneshot detection,
+//! CJK volume markers (巻 / 卷 / 册), Cyrillic markers (Том / Глава), Korean
+//! markers (권 / 장), Mangapy `vol_356-1` syntax, `[Volume 11]` brackets,
+//! and the rest of `MangaSource` (Viz / Kodansha / Lezhin / Naver / Kakao).
+//! These come back as the corpus pass-rate test pushes them up the priority
+//! list.
 
-use crate::{Language, NumberRange};
+use crate::lexer::{Token, tokenize};
+use crate::{ChapterNumber, Language, NumberRange};
 
 /// Structured fields parsed from a single manga filename.
 ///
@@ -29,9 +43,6 @@ pub struct ParsedManga<'a> {
 }
 
 /// Origin of the scanned/digital source.
-///
-/// Manhwa-native sources (Lezhin / Naver / Kakao) live here too rather than in a
-/// separate enum; they're a property of the scan, not of a different parsing grammar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MangaSource {
     /// `(Digital)` tag — generic digital release, unspecified retailer.
@@ -53,21 +64,535 @@ pub enum MangaSource {
 }
 
 /// Parse a manga filename into structured fields.
-///
-/// **Stub** — currently returns a default `ParsedManga` regardless of input.
-/// The L2+ classifier will be implemented after the lexer corpus pass lands.
 #[must_use]
-pub fn parse(_filename: &str) -> ParsedManga<'_> {
-    ParsedManga::default()
+pub fn parse(filename: &str) -> ParsedManga<'_> {
+    let tokens = tokenize(filename);
+    ParsedManga {
+        title: None,
+        volume: detect_volume(&tokens),
+        chapter: detect_chapter(&tokens),
+        group: detect_group(&tokens),
+        source: detect_source(&tokens),
+        language: None,
+        revision: None,
+        is_oneshot: false,
+        extension: detect_extension(filename),
+    }
+}
+
+const MANGA_EXTENSIONS: &[&str] = &["cbz", "cbr", "zip", "7z", "rar", "pdf"];
+
+fn detect_extension(filename: &str) -> Option<&str> {
+    let dot_pos = filename.rfind('.')?;
+    let ext = &filename[dot_pos + 1..];
+    // Bound the length — `Vol.0001 (Digital)` would otherwise match `0001 (Digital)` as ext.
+    if ext.len() > 4 || ext.is_empty() {
+        return None;
+    }
+    let lower = ext.to_ascii_lowercase();
+    if MANGA_EXTENSIONS.contains(&lower.as_str()) {
+        Some(ext)
+    } else {
+        None
+    }
+}
+
+fn detect_volume(tokens: &[Token]) -> Option<NumberRange> {
+    for (i, t) in tokens.iter().enumerate() {
+        let Token::Word(w) = t else { continue };
+
+        // Single-token form: v01 / vol01 / volume01
+        if let Some(num_str) = strip_volume_prefix(w)
+            && let Ok(start_whole) = num_str.parse::<u32>()
+        {
+            return Some(build_range(tokens, i + 1, start_whole));
+        }
+
+        // Multi-token form: Vol / Volume + delim(s) + number
+        if eq_ignore_ascii_case_any(w, &["vol", "volume"])
+            && let Some(range) = parse_number_after_marker(tokens, i + 1)
+        {
+            return Some(range);
+        }
+    }
+    None
+}
+
+fn detect_chapter(tokens: &[Token]) -> Option<NumberRange> {
+    for (i, t) in tokens.iter().enumerate() {
+        let Token::Word(w) = t else { continue };
+
+        // Single-token form: c001 / ch001 / chapter001
+        if let Some(num_str) = strip_chapter_prefix(w)
+            && let Ok(start_whole) = num_str.parse::<u32>()
+        {
+            return Some(build_range(tokens, i + 1, start_whole));
+        }
+
+        // Multi-token form: Ch / Chapter + delim(s) + number
+        if eq_ignore_ascii_case_any(w, &["ch", "chapter"])
+            && let Some(range) = parse_number_after_marker(tokens, i + 1)
+        {
+            return Some(range);
+        }
+    }
+    None
+}
+
+/// Build a [`NumberRange`] starting at `start_whole`, then optionally consume
+/// a `.<dec>` decimal suffix and an `-<num>[.<dec>]` range end from the
+/// following tokens.
+fn build_range(tokens: &[Token], cursor: usize, start_whole: u32) -> NumberRange {
+    let mut start = ChapterNumber::new(start_whole);
+    let mut next = cursor;
+
+    if let Some((dec, after)) = parse_decimal_suffix(tokens, next) {
+        start = ChapterNumber::with_decimal(start_whole, dec);
+        next = after;
+    }
+
+    let end = parse_range_end(tokens, next);
+    NumberRange { start, end }
+}
+
+/// Skip up to N delimiters, then read a number-shaped Word. Used for
+/// `Vol 1` / `Vol. 1` / `Volume_01` / `Chapter 12` patterns.
+fn parse_number_after_marker(tokens: &[Token], start: usize) -> Option<NumberRange> {
+    const MAX_DELIMS: usize = 3;
+    let mut i = start;
+    let mut delims_skipped = 0usize;
+
+    while i < tokens.len() && delims_skipped < MAX_DELIMS {
+        match &tokens[i] {
+            Token::Delimiter(_) => {
+                delims_skipped += 1;
+                i += 1;
+            }
+            Token::Word(num_str) => {
+                let start_whole = num_str.parse::<u32>().ok()?;
+                return Some(build_range(tokens, i + 1, start_whole));
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn parse_decimal_suffix(tokens: &[Token], pos: usize) -> Option<(u16, usize)> {
+    if !matches!(tokens.get(pos), Some(Token::Delimiter('.'))) {
+        return None;
+    }
+    let Some(Token::Word(dec_str)) = tokens.get(pos + 1) else {
+        return None;
+    };
+    let dec = dec_str.parse::<u16>().ok()?;
+    Some((dec, pos + 2))
+}
+
+fn parse_range_end(tokens: &[Token], pos: usize) -> Option<ChapterNumber> {
+    if !matches!(tokens.get(pos), Some(Token::Delimiter('-'))) {
+        return None;
+    }
+    let Some(Token::Word(num_str)) = tokens.get(pos + 1) else {
+        return None;
+    };
+    let end_whole = num_str.parse::<u32>().ok()?;
+    let mut end = ChapterNumber::new(end_whole);
+    if let Some((dec, _)) = parse_decimal_suffix(tokens, pos + 2) {
+        end = ChapterNumber::with_decimal(end_whole, dec);
+    }
+    Some(end)
+}
+
+fn detect_group<'a>(tokens: &[Token<'a>]) -> Option<&'a str> {
+    for t in tokens {
+        if let Token::Bracketed(content) = t
+            && !content.is_empty()
+            && !contains_volume_keyword(content)
+        {
+            return Some(*content);
+        }
+    }
+    None
+}
+
+fn detect_source(tokens: &[Token]) -> Option<MangaSource> {
+    for t in tokens {
+        let content = match t {
+            Token::Parenthesized(s) | Token::Bracketed(s) => *s,
+            _ => continue,
+        };
+        let lower = content.to_ascii_lowercase();
+        if lower == "digital" || lower.starts_with("digital-") || lower.starts_with("digital ") {
+            return Some(MangaSource::Digital);
+        }
+        if lower == "mangaplus" || lower == "manga plus" {
+            return Some(MangaSource::MangaPlus);
+        }
+        if lower == "viz" {
+            return Some(MangaSource::Viz);
+        }
+        if lower == "kodansha" {
+            return Some(MangaSource::Kodansha);
+        }
+    }
+    None
+}
+
+// --- helpers ---
+
+fn strip_volume_prefix(word: &str) -> Option<&str> {
+    // Order matters: longer prefixes first so "volume" beats "vol" beats "v".
+    for prefix in ["volume", "vol", "v"] {
+        if let Some(rest) = strip_prefix_ignore_ascii_case(word, prefix)
+            && !rest.is_empty()
+            && rest.chars().all(|c| c.is_ascii_digit())
+        {
+            return Some(rest);
+        }
+    }
+    None
+}
+
+fn strip_chapter_prefix(word: &str) -> Option<&str> {
+    for prefix in ["chapter", "ch", "c"] {
+        if let Some(rest) = strip_prefix_ignore_ascii_case(word, prefix)
+            && !rest.is_empty()
+            && rest.chars().all(|c| c.is_ascii_digit())
+        {
+            return Some(rest);
+        }
+    }
+    None
+}
+
+fn strip_prefix_ignore_ascii_case<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
+    // `str::split_at` panics on a non-char-boundary index, which happens when
+    // `s` starts with a multi-byte char like `幽` (3 bytes) and `prefix` is
+    // shorter than the first char. Use bytes for the comparison and `str::get`
+    // for the safe boundary check.
+    let head_bytes = s.as_bytes().get(..prefix.len())?;
+    if head_bytes.eq_ignore_ascii_case(prefix.as_bytes()) {
+        s.get(prefix.len()..)
+    } else {
+        None
+    }
+}
+
+fn eq_ignore_ascii_case_any(word: &str, candidates: &[&str]) -> bool {
+    candidates.iter().any(|c| word.eq_ignore_ascii_case(c))
+}
+
+fn contains_volume_keyword(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    // Conservative — full word match would be more correct but the bracket
+    // contents are typically short (group names) and the false-positive risk
+    // (a group named "Volunteer Scans") is rare.
+    lower.contains("volume") || lower.starts_with("vol ") || lower.starts_with("vol.")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn ch(whole: u32) -> ChapterNumber {
+        ChapterNumber::new(whole)
+    }
+
+    fn ch_dec(whole: u32, dec: u16) -> ChapterNumber {
+        ChapterNumber::with_decimal(whole, dec)
+    }
+
+    fn single(n: ChapterNumber) -> NumberRange {
+        NumberRange::single(n)
+    }
+
+    fn range(a: ChapterNumber, b: ChapterNumber) -> NumberRange {
+        NumberRange::range(a, b)
+    }
+
+    // ----- extension -----
+
     #[test]
-    fn parse_empty_returns_default() {
-        let p = parse("");
-        assert_eq!(p, ParsedManga::default());
+    fn extension_known_manga_types() {
+        for ext in ["cbz", "cbr", "zip", "7z", "pdf", "rar"] {
+            let f = format!("Title v01.{ext}");
+            assert_eq!(detect_extension(&f), Some(ext), "ext {ext}");
+        }
+    }
+
+    #[test]
+    fn extension_preserves_case() {
+        assert_eq!(detect_extension("Title.CBZ"), Some("CBZ"));
+    }
+
+    #[test]
+    fn extension_rejects_unknown() {
+        assert_eq!(detect_extension("Title.png"), None);
+        assert_eq!(detect_extension("Title.txt"), None); // text is LN-side
+    }
+
+    #[test]
+    fn extension_rejects_long_garbage() {
+        // "Vol.0001" should not match `.0001` as an extension
+        assert_eq!(detect_extension("Vol.0001 Ch.001"), None);
+    }
+
+    // ----- volume -----
+
+    #[test]
+    fn volume_single_token_v01() {
+        assert_eq!(parse("Title v01.cbz").volume, Some(single(ch(1))));
+        assert_eq!(parse("Title v0001.cbz").volume, Some(single(ch(1))));
+        assert_eq!(parse("Title V01.cbz").volume, Some(single(ch(1))));
+    }
+
+    #[test]
+    fn volume_multi_token_vol_dot_space() {
+        assert_eq!(parse("Title Vol. 1.cbz").volume, Some(single(ch(1))));
+        assert_eq!(parse("Title Vol.1.cbz").volume, Some(single(ch(1))));
+        assert_eq!(parse("Title Vol 1.cbz").volume, Some(single(ch(1))));
+        assert_eq!(parse("Title Volume 11.cbz").volume, Some(single(ch(11))));
+    }
+
+    #[test]
+    fn volume_decimal() {
+        assert_eq!(parse("Title v1.1.cbz").volume, Some(single(ch_dec(1, 1))));
+        assert_eq!(parse("Title v03.5.cbz").volume, Some(single(ch_dec(3, 5))));
+    }
+
+    #[test]
+    fn volume_range() {
+        assert_eq!(
+            parse("Title v16-17.cbz").volume,
+            Some(range(ch(16), ch(17)))
+        );
+        assert_eq!(parse("Title v01-03.cbz").volume, Some(range(ch(1), ch(3))));
+    }
+
+    #[test]
+    fn volume_first_wins_on_duplicate() {
+        // Per Kavita's ParseDuplicateVolumeTest: first marker wins.
+        let p = parse("One Piece - Vol 2 Ch 1.1 - Volume 4 Omakes");
+        assert_eq!(p.volume, Some(single(ch(2))));
+    }
+
+    #[test]
+    fn volume_absent_returns_none() {
+        assert_eq!(parse("Just a title.cbz").volume, None);
+    }
+
+    // ----- chapter -----
+
+    #[test]
+    fn chapter_single_token_c001() {
+        assert_eq!(parse("Title c001.cbz").chapter, Some(single(ch(1))));
+        assert_eq!(parse("Title C42.cbz").chapter, Some(single(ch(42))));
+    }
+
+    #[test]
+    fn chapter_multi_token_ch_chapter() {
+        assert_eq!(parse("Title Ch.4.cbz").chapter, Some(single(ch(4))));
+        assert_eq!(parse("Title Ch. 4.cbz").chapter, Some(single(ch(4))));
+        assert_eq!(parse("Title Chapter 12.cbz").chapter, Some(single(ch(12))));
+    }
+
+    #[test]
+    fn chapter_decimal() {
+        assert_eq!(
+            parse("Title c42.5.cbz").chapter,
+            Some(single(ch_dec(42, 5)))
+        );
+    }
+
+    #[test]
+    fn chapter_range() {
+        assert_eq!(
+            parse("Title c001-008.cbz").chapter,
+            Some(range(ch(1), ch(8)))
+        );
+    }
+
+    // ----- group -----
+
+    #[test]
+    fn group_leading_bracket() {
+        assert_eq!(parse("[Yen Press] Title v01.epub").group, Some("Yen Press"));
+    }
+
+    #[test]
+    fn group_trailing_bracket() {
+        assert_eq!(parse("Title v01 [LuCaZ].cbz").group, Some("LuCaZ"));
+    }
+
+    #[test]
+    fn group_skips_volume_in_brackets() {
+        // [Volume 11] is not a group, it's a volume marker. Per v0 scope we
+        // don't extract the volume from it, but we do correctly ignore it as group.
+        let p = parse("Tonikaku Cawaii [Volume 11].cbz");
+        assert_eq!(p.group, None);
+    }
+
+    // ----- source -----
+
+    #[test]
+    fn source_digital() {
+        assert_eq!(
+            parse("Title v01 (Digital).cbz").source,
+            Some(MangaSource::Digital)
+        );
+        assert_eq!(
+            parse("Title v01 (Digital-HD).cbz").source,
+            Some(MangaSource::Digital)
+        );
+    }
+
+    #[test]
+    fn source_mangaplus() {
+        assert_eq!(
+            parse("Title v01 (MangaPlus).cbz").source,
+            Some(MangaSource::MangaPlus)
+        );
+    }
+
+    #[test]
+    fn source_absent_when_no_known_tag() {
+        assert_eq!(parse("Title v01.cbz").source, None);
+    }
+
+    // ----- end-to-end -----
+
+    #[test]
+    fn parse_canonical_kavita_example() {
+        let p = parse("BTOOOM! v01 (2013) (Digital) (Shadowcat-Empire)");
+        assert_eq!(p.volume, Some(single(ch(1))));
+        assert_eq!(p.source, Some(MangaSource::Digital));
+        assert_eq!(p.extension, None); // no .cbz/etc on this fixture
+    }
+
+    #[test]
+    fn parse_full_grammar_run() {
+        let p = parse("[Yen Press] Sword Art Online v10 c042.5 (Digital).epub");
+        assert_eq!(p.group, Some("Yen Press"));
+        assert_eq!(p.volume, Some(single(ch(10))));
+        assert_eq!(p.chapter, Some(single(ch_dec(42, 5))));
+        assert_eq!(p.source, Some(MangaSource::Digital));
+        assert_eq!(p.extension, None); // .epub is LN-side
+    }
+
+    // ----- corpus -----
+
+    /// Run `parse()` against every Kavita fixture and report per-method pass
+    /// rates. Asserts a minimum aggregate rate so regressions surface, and
+    /// prints first-N failures so it's easy to see what's not working.
+    ///
+    /// As the parser improves, raise `MIN_AGGREGATE_PASS_RATE`.
+    #[test]
+    fn corpus_kavita_pass_rate() {
+        const CORPUS: &str = include_str!("../corpus/manga_kavita.json");
+        // v0 hits ~56% out of the gate. Threshold is set just below current
+        // measured rate so a real regression surfaces here, not a 5pp drop
+        // from edge-case work. Raise as the parser improves.
+        const MIN_AGGREGATE_PASS_RATE: f64 = 0.50;
+
+        let entries: Vec<serde_json::Value> = serde_json::from_str(CORPUS).unwrap();
+
+        #[derive(Default)]
+        struct Bucket {
+            pass: usize,
+            total: usize,
+            failures: Vec<(String, String, String)>, // (input, expected, actual)
+        }
+        let mut by_method: std::collections::BTreeMap<String, Bucket> = Default::default();
+
+        for entry in &entries {
+            let source = entry["source"].as_str().unwrap_or("");
+            let method = source.rsplit("::").next().unwrap_or("").to_string();
+            let input = entry["input"].as_str().unwrap_or("");
+
+            let (expected_field, actual_str): (Option<&str>, Option<String>) = match method.as_str()
+            {
+                "ParseVolumeTest" | "ParseDuplicateVolumeTest" => (
+                    entry.get("expected_volume").and_then(|v| v.as_str()),
+                    parse(input).volume.as_ref().map(format_range),
+                ),
+                "ParseChaptersTest"
+                | "ParseDuplicateChapterTest"
+                | "ParseExtraNumberChaptersTest" => (
+                    entry.get("expected_chapter").and_then(|v| v.as_str()),
+                    parse(input).chapter.as_ref().map(format_range),
+                ),
+                _ => continue, // series, edition not yet implemented
+            };
+
+            // Skip entries with null expectations (Kavita's LooseLeafVolume sentinel)
+            // until v0 scope grows to model "no value" assertions.
+            let Some(expected) = expected_field else {
+                continue;
+            };
+
+            let bucket = by_method.entry(method).or_default();
+            bucket.total += 1;
+
+            let actual_str = actual_str.unwrap_or_else(|| "None".to_string());
+            if actual_str == expected {
+                bucket.pass += 1;
+            } else if bucket.failures.len() < 5 {
+                bucket
+                    .failures
+                    .push((input.to_string(), expected.to_string(), actual_str));
+            }
+        }
+
+        let mut total_pass = 0usize;
+        let mut total_count = 0usize;
+        eprintln!("\n--- corpus_kavita_pass_rate ---");
+        for (method, bucket) in &by_method {
+            total_pass += bucket.pass;
+            total_count += bucket.total;
+            let pct = if bucket.total > 0 {
+                bucket.pass as f64 / bucket.total as f64 * 100.0
+            } else {
+                0.0
+            };
+            eprintln!(
+                "{:<35}  {:>4}/{:<4}  {:>5.1}%",
+                method, bucket.pass, bucket.total, pct
+            );
+            for (input, expected, actual) in &bucket.failures {
+                let truncated: String = input.chars().take(70).collect();
+                eprintln!("    FAIL: {truncated}  expected={expected}  got={actual}");
+            }
+        }
+        let aggregate = total_pass as f64 / total_count.max(1) as f64;
+        eprintln!(
+            "aggregate: {total_pass}/{total_count} = {:.1}%",
+            aggregate * 100.0
+        );
+
+        assert!(
+            aggregate >= MIN_AGGREGATE_PASS_RATE,
+            "aggregate pass rate {:.1}% dropped below floor {:.0}% — regression?",
+            aggregate * 100.0,
+            MIN_AGGREGATE_PASS_RATE * 100.0
+        );
+    }
+
+    fn format_range(r: &NumberRange) -> String {
+        match r.end {
+            None => format_chapter_number(r.start),
+            Some(end) => format!(
+                "{}-{}",
+                format_chapter_number(r.start),
+                format_chapter_number(end)
+            ),
+        }
+    }
+
+    fn format_chapter_number(n: ChapterNumber) -> String {
+        match n.decimal {
+            None => n.whole.to_string(),
+            Some(d) => format!("{}.{}", n.whole, d),
+        }
     }
 }
