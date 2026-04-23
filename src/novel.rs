@@ -19,10 +19,10 @@
 //! title-slicing helper), revision (from `{r2}`-style curly tags).
 //!
 //! **Out of scope**: year ranges (`(2022-2024)` → `Some(2022)` only —
-//! single u16 field for now), language tags, chapter numbers (LN filenames
-//! essentially never carry these), alt-title separator handling (`|`/`/`
-//! between Japanese and English titles is preserved as-is in the raw
-//! title slice — consumers can split if needed).
+//! single u16 field for now), chapter numbers (LN filenames essentially
+//! never carry these), alt-title separator handling (`|`/`/` between
+//! Japanese and English titles is preserved as-is in the raw title slice
+//! — consumers can split if needed).
 
 use std::borrow::Cow;
 
@@ -73,7 +73,7 @@ pub fn parse(filename: &str) -> ParsedNovel<'_> {
         group: detect_group(&tokens),
         publisher: detect_publisher(&tokens),
         scanner: detect_scanner(&tokens),
-        language: None,
+        language: common::detect_language(&tokens),
         year: detect_year(&tokens),
         is_premium: detect_tag(&tokens, "premium"),
         is_digital: detect_tag(&tokens, "digital"),
@@ -467,21 +467,43 @@ mod tests {
                 p.scanner.map(str::to_owned),
                 expected.get("scanner").and_then(|v| v.as_str()),
             );
+            check(
+                "language",
+                p.language.map(|l| format!("{l:?}")),
+                expected.get("language").and_then(|v| v.as_str()),
+            );
+            check(
+                "extension",
+                p.extension.map(str::to_owned),
+                expected.get("extension").and_then(|v| v.as_str()),
+            );
+            check(
+                "revision",
+                p.revision.map(|r| r.to_string()),
+                expected
+                    .get("revision")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n.to_string())
+                    .as_deref(),
+            );
 
-            // Boolean is_digital field — use Some("true")/Some("false") convention
-            if let Some(want_bool) = expected.get("is_digital").and_then(|v| v.as_bool()) {
-                let s = by_field.entry("is_digital").or_default();
+            // Boolean flags — exercised when the fixture declares an expected value.
+            let mut check_bool = |field: &'static str, got: bool, want_key: &str| {
+                let Some(want) = expected.get(want_key).and_then(|v| v.as_bool()) else {
+                    return;
+                };
+                let s = by_field.entry(field).or_default();
                 s.total += 1;
-                if p.is_digital == want_bool {
+                if got == want {
                     s.pass += 1;
                 } else if s.failures.len() < 3 {
                     let truncated: String = input.chars().take(60).collect();
-                    s.failures.push(format!(
-                        "{truncated}  is_digital: want={want_bool} got={}",
-                        p.is_digital
-                    ));
+                    s.failures
+                        .push(format!("{truncated}  {field}: want={want} got={got}"));
                 }
-            }
+            };
+            check_bool("is_digital", p.is_digital, "is_digital");
+            check_bool("is_premium", p.is_premium, "is_premium");
         }
 
         eprintln!("\n--- corpus_nyaa_field_pass_rate ---");

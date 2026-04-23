@@ -34,7 +34,7 @@ mod common;
 /// [`detect_chapter_revision`] pulls the `v\d+` suffix from forms like
 /// `Chapter11v2` → `Some(2)` — the signal upgrade-detection pipelines
 /// key off.
-pub use common::{detect_chapter, detect_chapter_revision, detect_volume};
+pub use common::{detect_chapter, detect_chapter_revision, detect_language, detect_volume};
 
 /// A chapter or volume number.
 ///

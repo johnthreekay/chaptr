@@ -5,6 +5,7 @@
 //! is faster than the PHF hash dispatch and avoids pulling in the dep before the
 //! corpus pass tells us what scale we're operating at.
 
+pub mod languages;
 pub mod ln_publishers;
 pub mod ln_scanners;
 

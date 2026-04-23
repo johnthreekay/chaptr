@@ -69,6 +69,8 @@ Both entry points are pure functions — string in, struct out, no I/O. String f
 
 **Edition (manga):** `Omnibus`, `Uncensored`, `Omnibus Edition` compounds.
 
+**Language:** ISO shortcodes (`[EN]`, `[JP]`, `[zh-tw]`), full English names (`(English)`, `(Japanese)`, `(Simplified Chinese)`), and native-script tags (`简体中文`, `繁體中文`, `한국어`, `русский`). Unqualified `CN` / `zh` / `Chinese` defaults to Simplified Chinese, matching Nyaa convention. `[Raw]` is deliberately *not* mapped — it's a format tag, not a language declaration.
+
 **LN-specific:** `is_digital` / `is_premium` tags, year extraction, revision from `{r2}`-style curly tags.
 
 ## Scope
@@ -84,7 +86,7 @@ Manhwa / manhua live in the `manga` module. Grammar is close enough that splitti
 
 ## Test coverage
 
-- **145 unit tests**, clippy + fmt clean
+- **162 unit tests**, clippy + fmt clean
 - **`corpus/manga_kavita.json`** — 350 real-world fixtures lifted from [Kavita](https://github.com/Kareadita/Kavita)'s manga parser tests (GPL-3.0, per-entry attribution). Current aggregate pass rate: **98.5%**. Per-method:
 
   | Method | Rate |
@@ -97,7 +99,7 @@ Manhwa / manhua live in the `manga` module. Grammar is close enough that splitti
   | ParseSeriesTest | 97.7% (Thai-only failures) |
   | ParseEditionTest | 100% |
 
-- **`corpus/novel_nyaa.json`** — 8 hand-picked LN fixtures from Nyaa with full-struct field assertions. Current pass rate: **100%** (22/22 field asserts).
+- **`corpus/novel_nyaa.json`** — 15 hand-picked LN fixtures from Nyaa with full-struct field assertions across nine fields (group, volume_range, publisher, scanner, language, extension, revision, is_digital, is_premium). Current pass rate: **100%** (52/52 field asserts).
 
 - **`corpus/chapters_mihon.json`** — 54 chapter-number edge cases from [Mihon](https://github.com/mihonapp/mihon) (Tachiyomi successor), Apache-2.0. Loaded for smoke but not asserted against — our chapter model is a `ChapterNumber { whole, decimal }` tuple while Mihon's is `f64`, so direct equality isn't meaningful.
 
@@ -110,6 +112,8 @@ All documented in the module-level doc comments. The ones that show up as corpus
 - **Thai `เล่ม` / `เล่มที่`** — Ryokan's intended upstream (Nyaa English-translated) doesn't carry Thai script; supporting it would need lexer changes for Thai combining marks and additional keyword entries. The five remaining Kavita failures are all in this bucket.
 - **X-suffix ranges** — `c001-006x1` (rare Kavita syntax)
 - **Kavita "special" empty-series cases** — filenames like `Love Hina - Special.cbz` where Kavita expects empty series; no oneshot/special detection yet
+
+Closed in 1.5.0: language detection (`[EN]` / `(English)` / `简体中文` / etc.) — previously a stubbed field returning `None`. Expanded LN corpus from 8 to 15 fixtures, now covering language/extension/revision/is_premium fields in addition to the original group/volume/publisher/scanner/is_digital set.
 
 Closed in 1.4.0: reverse-range CJK (`38-1화` → 38), `#N`-at-end chapter detection (`Episode 3 ... #02` → 2), mixed-prefix chapter range (`c01-c04` → 1-4), trailing title-dot preservation (`Hentai Ouji... Neko.`), Russian postfix Том (`5 Том Test` → vol 5).
 

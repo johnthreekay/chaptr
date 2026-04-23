@@ -19,7 +19,8 @@
 use std::borrow::Cow;
 
 use crate::lexer::{Token, tokenize};
-use crate::{ChapterNumber, NumberRange};
+use crate::tables::languages;
+use crate::{ChapterNumber, Language, NumberRange};
 
 // ---------- keyword and marker tables ----------
 
@@ -88,6 +89,32 @@ pub(crate) fn detect_extension<'a>(filename: &'a str, known: &[&str]) -> Option<
     } else {
         None
     }
+}
+
+// ---------- language detection ----------
+
+/// Scan bracket/paren tokens for a recognized language tag and return
+/// the corresponding [`Language`] variant.
+///
+/// First match wins. Only whole-content matches count — substrings don't,
+/// so `Engineering Manual.cbz` won't resolve to English on the back of
+/// the `en` substring. `(Raw)` / `[Raw]` is deliberately *not* a language
+/// tag; it's a format marker that often implies Japanese source but
+/// isn't a declaration.
+pub fn detect_language(tokens: &[Token]) -> Option<Language> {
+    for t in tokens {
+        let content = match t {
+            Token::Bracketed(s) | Token::Parenthesized(s) => *s,
+            _ => continue,
+        };
+        if content.is_empty() {
+            continue;
+        }
+        if let Some(lang) = languages::lookup(content) {
+            return Some(lang);
+        }
+    }
+    None
 }
 
 // ---------- volume / chapter detection ----------

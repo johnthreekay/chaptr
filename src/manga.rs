@@ -24,11 +24,11 @@
 //! `장` / `话` / `話` / `章` / `回`, plus multi-token Cyrillic keywords
 //! `Том` / `Тома` / `Глава` / `Главы`.
 //!
-//! **Out of scope**: language tags, revision *extraction* (the suffix is
-//! consumed but not stored), oneshot detection, Korean multi-char prefix
-//! `시즌`, Thai (`เล่ม`), alpha-suffix decimal chapters (`Beelzebub_153b` =
-//! 153.5), `c001-006x1`-style chapter ranges, and the rest of `MangaSource`
-//! (Viz / Kodansha / Lezhin / Naver / Kakao).
+//! **Out of scope**: revision *extraction* notes (now in 1.1+), Thai
+//! (`เล่ม`), `c001-006x1`-style chapter ranges. Everything else in the
+//! previous out-of-scope list (language tags, Korean `시즌`, alpha-suffix
+//! decimals, full `MangaSource` coverage, oneshot detection) has since
+//! landed — see module-level CHANGELOG notes in the README.
 
 use std::borrow::Cow;
 
@@ -119,7 +119,7 @@ pub fn parse(filename: &str) -> ParsedManga<'_> {
         chapter,
         group: detect_group(&tokens),
         source: detect_source(&tokens),
-        language: None,
+        language: common::detect_language(&tokens),
         revision: common::detect_chapter_revision(&tokens),
         is_oneshot,
         edition: detect_edition(&tokens),
@@ -1140,6 +1140,66 @@ mod tests {
     fn title_handles_cjk() {
         let p = parse("スライム倒して300年 1巻");
         assert_eq!(title_str(&p), Some("スライム倒して300年"));
+    }
+
+    // ----- language -----
+
+    #[test]
+    fn language_from_bracket_tag() {
+        let p = parse("[Group] Title v01 [EN].cbz");
+        assert_eq!(p.language, Some(Language::English));
+    }
+
+    #[test]
+    fn language_from_paren_tag() {
+        let p = parse("Title v01 (Japanese).cbz");
+        assert_eq!(p.language, Some(Language::Japanese));
+    }
+
+    #[test]
+    fn language_raw_is_not_detected() {
+        // `[Raw]` is a format tag, not a language declaration.
+        let p = parse("[Group] Title v01 [Raw].cbz");
+        assert_eq!(p.language, None);
+    }
+
+    #[test]
+    fn language_first_match_wins() {
+        // If a filename somehow carries two tags, the earlier one wins.
+        // Not expected in the corpus but pin the behavior.
+        let p = parse("[Group] Title v01 [EN] [Korean].cbz");
+        assert_eq!(p.language, Some(Language::English));
+    }
+
+    #[test]
+    fn language_none_for_untagged() {
+        let p = parse("[Group] Title v01 (Digital).cbz");
+        assert_eq!(p.language, None);
+    }
+
+    #[test]
+    fn language_does_not_false_positive_on_substring() {
+        // `Engineering` contains `en` but must not resolve to English.
+        let p = parse("Engineering Manual v01.cbz");
+        assert_eq!(p.language, None);
+    }
+
+    #[test]
+    fn language_simplified_chinese_default() {
+        let p = parse("[Group] Title v01 [CN].cbz");
+        assert_eq!(p.language, Some(Language::SimplifiedChinese));
+    }
+
+    #[test]
+    fn language_traditional_chinese_explicit() {
+        let p = parse("[Group] Title v01 [zh-tw].cbz");
+        assert_eq!(p.language, Some(Language::TraditionalChinese));
+    }
+
+    #[test]
+    fn language_cjk_script_tag() {
+        let p = parse("[組] 漫画 v01 [简体中文].cbz");
+        assert_eq!(p.language, Some(Language::SimplifiedChinese));
     }
 
     // ----- end-to-end -----

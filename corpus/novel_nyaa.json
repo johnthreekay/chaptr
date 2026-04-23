@@ -81,5 +81,92 @@
       "scanner": "LuCaZ"
     },
     "_model_gap": "Same `group` + `scanner` distinction as the first entry. Establishes the pattern across two different series — not a one-off."
+  },
+  {
+    "input": "Sword Art Online Vol 10 - Alicization Running [Yen Press] [LuCaZ] {r2}.epub",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "10",
+      "publisher": "Yen Press",
+      "scanner": "LuCaZ",
+      "extension": "epub",
+      "revision": 2
+    },
+    "_note": "Revision marker `{r2}` — canonical Kavita shape. Also tests subtitle-after-volume slicing (Alicization Running is a subtitle, not a series)."
+  },
+  {
+    "input": "Spice and Wolf v01 (2009) (Digital) [Yen On] (CleanBookGuy)",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1",
+      "year_range": "2009",
+      "is_digital": true,
+      "scanner": "CleanBookGuy"
+    },
+    "_note": "[Yen On] is a Yen Press imprint not currently in the publisher table. Exercises the `scanner` field independent of a known publisher."
+  },
+  {
+    "input": "Konosuba v01 (Premium) [J-Novel Club] [Stick].epub",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1",
+      "publisher": "J-Novel Club",
+      "scanner": "Stick",
+      "is_premium": true,
+      "extension": "epub"
+    },
+    "_note": "J-Novel Club + Premium tier. Scanner is Stick. Exercises is_premium flag."
+  },
+  {
+    "input": "[Group] Overlord v01 [EN] [Yen Press].epub",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1",
+      "group": "Group",
+      "publisher": "Yen Press",
+      "language": "English",
+      "extension": "epub"
+    },
+    "_note": "Explicit [EN] language tag. Group + publisher coexist."
+  },
+  {
+    "input": "Mushoku Tensei v01 [JP] [Raw].epub",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1",
+      "language": "Japanese",
+      "extension": "epub"
+    },
+    "_note": "Japanese short-code tag with a [Raw] format marker. Language detection should pick JP and ignore Raw."
+  },
+  {
+    "input": "无职转生 v01 (简体中文).epub",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "1",
+      "language": "SimplifiedChinese",
+      "extension": "epub"
+    },
+    "_note": "Chinese-script language tag `(简体中文)`. CJK-in-title with language parenthetical."
+  },
+  {
+    "input": "Re Zero Starting Life in Another World v03 (French).epub",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "3",
+      "language": "French",
+      "extension": "epub"
+    },
+    "_note": "French full-name language tag in parens."
+  },
+  {
+    "input": "[Stick] That Time I Got Reincarnated as a Slime v14.epub",
+    "source": "nyaa-hand-picked",
+    "expected": {
+      "volume_range": "14",
+      "scanner": "Stick",
+      "extension": "epub"
+    },
+    "_note": "Scanner as the sole leading bracket (no publisher or group). Extension check."
   }
 ]
