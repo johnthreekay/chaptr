@@ -117,6 +117,37 @@ fn detect_group<'a>(tokens: &[Token<'a>]) -> Option<&'a str> {
     None
 }
 
+/// Patterns that map bracketed/parenthesized content to a `MangaSource`.
+/// Matches on exact equality OR prefix-followed-by-space-or-hyphen, so
+/// `(Digital)` and `(Digital-HD)` and `(Digital HD)` all resolve to
+/// `MangaSource::Digital`.
+///
+/// Longer patterns come first to avoid shadowing — `"viz media"` is checked
+/// before `"viz"` so `(Viz Media)` classifies as `Viz` without matching
+/// `"viz"` + trailing " media".
+///
+/// `MangaSource::Scan` is intentionally NOT listed: the generic `(Scan)` tag
+/// is rare in real filenames, and `scan`-as-substring catches group names
+/// like `[SlowManga&OverloadScans]` or `[Scans_Compressed]` as false
+/// positives. Scan source is set externally by the consumer (e.g. from
+/// sidecar metadata) when known.
+const SOURCE_PATTERNS: &[(&str, MangaSource)] = &[
+    ("manga plus", MangaSource::MangaPlus),
+    ("mangaplus", MangaSource::MangaPlus),
+    ("viz media", MangaSource::Viz),
+    ("viz", MangaSource::Viz),
+    ("kodansha usa", MangaSource::Kodansha),
+    ("kodansha", MangaSource::Kodansha),
+    ("lezhin comics", MangaSource::Lezhin),
+    ("lezhin", MangaSource::Lezhin),
+    ("naver webtoon", MangaSource::Naver),
+    ("naver series", MangaSource::Naver),
+    ("naver", MangaSource::Naver),
+    ("kakao page", MangaSource::Kakao),
+    ("kakao", MangaSource::Kakao),
+    ("digital", MangaSource::Digital),
+];
+
 fn detect_source(tokens: &[Token]) -> Option<MangaSource> {
     for t in tokens {
         let content = match t {
@@ -124,17 +155,15 @@ fn detect_source(tokens: &[Token]) -> Option<MangaSource> {
             _ => continue,
         };
         let lower = content.to_ascii_lowercase();
-        if lower == "digital" || lower.starts_with("digital-") || lower.starts_with("digital ") {
-            return Some(MangaSource::Digital);
-        }
-        if lower == "mangaplus" || lower == "manga plus" {
-            return Some(MangaSource::MangaPlus);
-        }
-        if lower == "viz" {
-            return Some(MangaSource::Viz);
-        }
-        if lower == "kodansha" {
-            return Some(MangaSource::Kodansha);
+        for (pattern, source) in SOURCE_PATTERNS {
+            if lower == *pattern {
+                return Some(*source);
+            }
+            if let Some(rest) = lower.strip_prefix(*pattern)
+                && matches!(rest.chars().next(), Some('-' | ' '))
+            {
+                return Some(*source);
+            }
         }
     }
     None
@@ -378,6 +407,88 @@ mod tests {
     #[test]
     fn source_absent_when_no_known_tag() {
         assert_eq!(parse("Title v01.cbz").source, None);
+    }
+
+    #[test]
+    fn source_viz_variants() {
+        assert_eq!(parse("Title v01 (Viz).cbz").source, Some(MangaSource::Viz));
+        assert_eq!(
+            parse("Title v01 (Viz Media).cbz").source,
+            Some(MangaSource::Viz)
+        );
+    }
+
+    #[test]
+    fn source_kodansha_variants() {
+        assert_eq!(
+            parse("Title v01 (Kodansha).cbz").source,
+            Some(MangaSource::Kodansha)
+        );
+        assert_eq!(
+            parse("Title v01 (Kodansha USA).cbz").source,
+            Some(MangaSource::Kodansha)
+        );
+    }
+
+    #[test]
+    fn source_lezhin_manhwa() {
+        assert_eq!(
+            parse("Title c042 (Lezhin).cbz").source,
+            Some(MangaSource::Lezhin)
+        );
+        assert_eq!(
+            parse("Title c042 (Lezhin Comics).cbz").source,
+            Some(MangaSource::Lezhin)
+        );
+    }
+
+    #[test]
+    fn source_naver_manhwa() {
+        assert_eq!(
+            parse("Title c042 (Naver).cbz").source,
+            Some(MangaSource::Naver)
+        );
+        assert_eq!(
+            parse("Title c042 (Naver Webtoon).cbz").source,
+            Some(MangaSource::Naver)
+        );
+        assert_eq!(
+            parse("Title c042 (Naver Series).cbz").source,
+            Some(MangaSource::Naver)
+        );
+    }
+
+    #[test]
+    fn source_kakao_manhwa() {
+        assert_eq!(
+            parse("Title c042 (Kakao).cbz").source,
+            Some(MangaSource::Kakao)
+        );
+        assert_eq!(
+            parse("Title c042 (Kakao Page).cbz").source,
+            Some(MangaSource::Kakao)
+        );
+    }
+
+    #[test]
+    fn source_ignores_substring_matches_in_group_names() {
+        // `[SlowManga&OverloadScans]` is a group name, not a scan-source tag.
+        // Generic `scan` is intentionally NOT in SOURCE_PATTERNS, so this
+        // doesn't match anything.
+        let p = parse("Title v01 [SlowManga&OverloadScans]");
+        assert_eq!(p.source, None);
+    }
+
+    #[test]
+    fn source_case_insensitive() {
+        assert_eq!(
+            parse("Title c042 (LEZHIN).cbz").source,
+            Some(MangaSource::Lezhin)
+        );
+        assert_eq!(
+            parse("Title c042 (kakao page).cbz").source,
+            Some(MangaSource::Kakao)
+        );
     }
 
     // ----- CJK markers -----
