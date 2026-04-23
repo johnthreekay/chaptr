@@ -1,0 +1,27 @@
+[
+  {
+    "input": "Gifting The Wonderful World With Blessings! - 3 Side Stories [yuNS][Unknown]",
+    "source": "kavita-BookParsingTests::ParseSeriesTest",
+    "expected_series": "Gifting The Wonderful World With Blessings!"
+  },
+  {
+    "input": "BBC Focus 00 The Science of Happiness 2nd Edition (2018)",
+    "source": "kavita-BookParsingTests::ParseSeriesTest",
+    "expected_series": "BBC Focus 00 The Science of Happiness 2nd Edition"
+  },
+  {
+    "input": "Faust - Volume 01 [Del Rey][Scans_Compressed]",
+    "source": "kavita-BookParsingTests::ParseSeriesTest",
+    "expected_series": "Faust"
+  },
+  {
+    "input": "Harrison, Kim - Dates from Hell - Hollows Vol 2.5.epub",
+    "source": "kavita-BookParsingTests::ParseVolumeTest",
+    "expected_volume": "2.5"
+  },
+  {
+    "input": "Faust - Volume 01 [Del Rey][Scans_Compressed]",
+    "source": "kavita-BookParsingTests::ParseVolumeTest",
+    "expected_volume": "1"
+  }
+]
