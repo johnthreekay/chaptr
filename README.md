@@ -122,6 +122,26 @@ All documented in the module-level doc comments. The ones that show up as corpus
 - **No `Result` in the public API.** Parsing never fails — it produces a `Parsed_` with `None` fields for anything it can't extract.
 - **Inline `#[cfg(test)] mod tests`** at the bottom of each file. No top-level `tests/` directory.
 
+## Performance
+
+Per-call cost is microseconds on modern hardware; tokenization plus a few
+small token scans, no heap allocation in the common path (`title` only
+allocates when underscore-to-space normalization forces it).
+
+| Bench | Time |
+|---|---|
+| `manga::parse` on a typical filename | ~1.5 µs |
+| `manga::parse` with CJK markers | ~2.1 µs |
+| `novel::parse` on a typical filename | ~1.0 µs |
+| 512-entry LN smoke corpus batch | ~1.2 ms (~430 K entries/sec) |
+
+For a 100-torrent Nyaa search result batch, total parse time is under
+0.2 ms — the parser isn't the bottleneck in a search pipeline.
+
+Run `cargo bench` for fresh numbers on your hardware. The `benches/`
+directory has a [Criterion](https://github.com/bheisler/criterion.rs)
+harness with representative inputs.
+
 ## Building locally
 
 ```bash
