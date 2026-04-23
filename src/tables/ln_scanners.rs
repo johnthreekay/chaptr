@@ -4,7 +4,22 @@
 //! responsible for converting a publisher's release into a clean EPUB. Seed list
 //! comes from the design doc's named examples; expand as the corpus grows.
 
-const SCANNERS: &[&str] = &["LuCaZ", "Stick", "Ushi", "Oak", "nao"];
+// Ordered roughly by corpus frequency. `Kobo` is Rakuten's e-reader platform
+// rather than a hand-scan credit, but filenames carry it in the same
+// scanner-shaped position so it lives here until a separate `source`-style
+// field materializes for LN.
+const SCANNERS: &[&str] = &[
+    "LuCaZ",
+    "Stick",
+    "Ushi",
+    "Oak",
+    "nao",
+    "CleanBookGuy",
+    "Kobo",
+    "faratnis",
+    "Antithetical",
+    "DigitalMangaFan",
+];
 
 /// Lookup a scanner credit by name, case-insensitively. Returns the canonical form.
 #[must_use]

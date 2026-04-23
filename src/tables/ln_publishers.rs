@@ -10,6 +10,7 @@ const PUBLISHERS: &[&str] = &[
     "Yen Press",
     "J-Novel Club",
     "Seven Seas",
+    "Seven Seas Siren", // Seven Seas' adult-content imprint; stored distinctly
     "Vertical",
     "Kodansha",
     "One Peace Books",

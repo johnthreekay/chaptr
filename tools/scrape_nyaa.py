@@ -41,19 +41,32 @@ CATEGORIES = [
     ("3_2", "raw"),
 ]
 
-# Publisher-targeted search queries. The Nyaa Literature category is dominated
-# by manga; without filtering, ~98% of RSS entries are manga. Searching for
-# specific LN publisher names dramatically raises LN density. Each query is
-# combined with c=3_0 (all Literature) so we get hits in either subcategory.
+# Publisher/scanner/group-targeted search queries. The Nyaa Literature
+# category is dominated by manga; without filtering, ~98% of RSS entries are
+# manga. Searching for specific LN names dramatically raises LN density.
+# Each query is combined with c=3_0 (all Literature) so we get hits in either
+# subcategory.
+#
+# Include publishers from our ln_publishers table, the main scanners from
+# ln_scanners, and a handful of upload-group names we've seen carry LN
+# content on Nyaa. High-recall names like "stick" and "lucaz" also pull in
+# manga releases, which the LN-likely classifier filters out downstream.
 LN_PUBLISHER_QUERIES = [
+    # Publishers
     "yen press",
     "j-novel club",
     "seven seas",
+    "seven seas siren",
     "vertical",
     "kodansha light novel",
     "one peace books",
+    "cross infinite world",
+    "hanashi media",
+    # Scanners + upload groups
     "lucaz",
-    "stick",   # high-recall, will pull manga too — let the LN classifier filter
+    "stick",
+    "cleanbookguy",
+    "unpaid ferryman",
 ]
 
 LN_EXTENSIONS = (".epub", ".pdf", ".azw3", ".mobi", ".txt")
@@ -144,9 +157,9 @@ def main() -> int:
             time.sleep(DELAY_SECONDS)
 
     # Pass 2: publisher-targeted search — dramatically raises LN density.
-    # Pages are capped at 2 per query to keep total request count modest.
+    # Pages capped at 3 per query.
     for query in LN_PUBLISHER_QUERIES:
-        for page in range(1, min(args.pages, 2) + 1):
+        for page in range(1, min(args.pages, 3) + 1):
             print(f"# fetch  q={query!r}  page={page}", file=sys.stderr)
             rss = fetch_rss("3_0", page, query=query)
             fetched += 1
