@@ -229,6 +229,24 @@ mod tests {
         assert_eq!(p, ParsedNovel::default());
     }
 
+    #[test]
+    fn parse_manga_extension_fed_to_novel_degrades_gracefully() {
+        // `.cbz` is a manga extension — novel parser must not match it.
+        let p = parse("Some Manga Title v01.cbz");
+        assert_eq!(p.extension, None);
+        assert_eq!(p.volume, Some(single(ch(1))));
+    }
+
+    #[test]
+    fn parse_ascii_garbage_no_panic() {
+        // Pin no-panic and no structured detections; title may pass
+        // through as the raw slice since `.` is title-content.
+        let p = parse("...---...");
+        assert_eq!(p.volume, None);
+        assert_eq!(p.group, None);
+        assert_eq!(p.extension, None);
+    }
+
     // ----- extension -----
 
     #[test]
@@ -413,6 +431,77 @@ mod tests {
         );
     }
 
+    /// Aggregate-stat sanity check on the smoke corpus — rough coverage
+    /// floors for the common fields. Catches silent regressions where
+    /// a refactor stops populating a field on the common path.
+    ///
+    /// Floors are well below current measured rates; this isn't meant
+    /// to push quality up, just to wake up if a previously-detected
+    /// field stops detecting on >10% of the corpus.
+    #[test]
+    fn smoke_corpus_aggregate_detection_rates() {
+        const CORPUS: &str = include_str!("../corpus/smoke_novel.txt");
+        let mut total = 0usize;
+        let mut with_title = 0usize;
+        let mut with_volume = 0usize;
+        let mut with_ext = 0usize;
+
+        for line in CORPUS.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            total += 1;
+            let p = parse(line);
+            if p.title.is_some() {
+                with_title += 1;
+            }
+            if p.volume.is_some() {
+                with_volume += 1;
+            }
+            if p.extension.is_some() {
+                with_ext += 1;
+            }
+        }
+
+        let rate = |n: usize| n as f64 / total.max(1) as f64;
+        let title_rate = rate(with_title);
+        let volume_rate = rate(with_volume);
+        let ext_rate = rate(with_ext);
+
+        eprintln!("\n--- smoke_corpus_aggregate_detection_rates ---");
+        eprintln!("total:      {total}");
+        eprintln!(
+            "title:      {with_title}/{total} = {:.1}%",
+            title_rate * 100.0
+        );
+        eprintln!(
+            "volume:     {with_volume}/{total} = {:.1}%",
+            volume_rate * 100.0
+        );
+        eprintln!("extension:  {with_ext}/{total} = {:.1}%", ext_rate * 100.0);
+
+        // Floors set well below current rates. Raise if the corpus
+        // improves; lower (with a comment explaining why) if the bar
+        // isn't justifiable for some new input class.
+        //
+        // Extension rate is NOT asserted — the smoke corpus is lifted
+        // from Nyaa torrent *directory* names, which never carry
+        // `.epub`/`.pdf`. Current rate is 0%; that's expected, not a
+        // regression. The stat is printed for visibility only.
+        let _ = ext_rate;
+        assert!(
+            title_rate >= 0.95,
+            "title detection rate {:.1}% below floor",
+            title_rate * 100.0
+        );
+        assert!(
+            volume_rate >= 0.75,
+            "volume detection rate {:.1}% below floor",
+            volume_rate * 100.0
+        );
+    }
+
     // ----- corpus pass rate: Nyaa hand-picked + Kavita -----
 
     #[test]
@@ -573,16 +662,21 @@ mod tests {
             }
         }
 
+        let rate = pass as f64 / total.max(1) as f64;
         eprintln!("\n--- corpus_kavita_book_pass_rate ---");
-        eprintln!("{pass}/{total}");
+        eprintln!("{pass}/{total} = {:.1}%", rate * 100.0);
         for f in &failures {
             eprintln!("    FAIL: {f}");
         }
-        // 5 entries total in Kavita BookParsingTests; this is a thin
-        // signal — just assert we don't regress to 0.
+        // Only 5 entries in Kavita BookParsingTests so the floor is
+        // lumpy (80% = 4/5, 60% = 3/5). Currently 4/5 passes — the
+        // remaining failure is a trailing-subtitle-slicing edge case
+        // we haven't implemented. 0.60 = 3/5 keeps the floor below
+        // current and gives one fixture of regression headroom.
         assert!(
-            pass > 0,
-            "Kavita book corpus produced zero passes — regression?"
+            rate >= 0.60,
+            "Kavita book corpus rate {:.1}% below floor",
+            rate * 100.0
         );
     }
 

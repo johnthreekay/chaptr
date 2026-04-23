@@ -86,7 +86,7 @@ Manhwa / manhua live in the `manga` module. Grammar is close enough that splitti
 
 ## Test coverage
 
-- **162 unit tests**, clippy + fmt clean
+- **182 unit tests** (includes 12 named regression tests for past fixed bugs), clippy + fmt clean
 - **`corpus/manga_kavita.json`** — 350 real-world fixtures lifted from [Kavita](https://github.com/Kareadita/Kavita)'s manga parser tests (GPL-3.0, per-entry attribution). Current aggregate pass rate: **98.5%**. Per-method:
 
   | Method | Rate |
@@ -101,9 +101,9 @@ Manhwa / manhua live in the `manga` module. Grammar is close enough that splitti
 
 - **`corpus/novel_nyaa.json`** — 15 hand-picked LN fixtures from Nyaa with full-struct field assertions across nine fields (group, volume_range, publisher, scanner, language, extension, revision, is_digital, is_premium). Current pass rate: **100%** (52/52 field asserts).
 
-- **`corpus/chapters_mihon.json`** — 54 chapter-number edge cases from [Mihon](https://github.com/mihonapp/mihon) (Tachiyomi successor), Apache-2.0. Loaded for smoke but not asserted against — our chapter model is a `ChapterNumber { whole, decimal }` tuple while Mihon's is `f64`, so direct equality isn't meaningful.
+- **`corpus/chapters_mihon.json`** — 54 chapter-number edge cases from [Mihon](https://github.com/mihonapp/mihon) (Tachiyomi successor), Apache-2.0. Converted to `f64` at assertion time for comparison against our `ChapterNumber { whole, decimal }` model. Detection coverage: **54%** (our bare-number heuristic is intentionally more conservative than Mihon's); whole-part accuracy when detected: **86%** (4 of 29 detected chapters have the wrong integer — alpha-suffix convention divergence: Mihon `Ch.4.a` → 4.1, ours → 4.5).
 
-- **`corpus/smoke_novel.txt`** — 512 real Nyaa LN filenames. `novel::parse` must not panic on any of them; includes false-positive manga entries deliberately so the LN parser also has to degrade gracefully on out-of-domain input.
+- **`corpus/smoke_novel.txt`** — 512 real Nyaa LN filenames. `novel::parse` must not panic on any of them; includes false-positive manga entries deliberately so the LN parser also has to degrade gracefully on out-of-domain input. An aggregate-stat test asserts floors on title-detection (**≥95%**, currently 100%) and volume-detection (**≥75%**, currently 82%) rates so silent regressions surface even without per-entry assertions.
 
 ## Known scope gaps
 

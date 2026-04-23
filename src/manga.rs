@@ -401,6 +401,48 @@ mod tests {
         NumberRange::range(a, b)
     }
 
+    // ----- parse stub / degenerate input -----
+
+    #[test]
+    fn parse_empty_returns_default() {
+        let p = parse("");
+        assert_eq!(p, ParsedManga::default());
+    }
+
+    #[test]
+    fn parse_whitespace_only_returns_default_or_empty() {
+        // Pure whitespace has no Words → no detectors fire, title slice
+        // is empty after clean_title. Just make sure it doesn't panic
+        // and produces sensible None fields.
+        let p = parse("   ");
+        assert_eq!(p.volume, None);
+        assert_eq!(p.chapter, None);
+        assert_eq!(p.group, None);
+        assert_eq!(p.extension, None);
+    }
+
+    #[test]
+    fn parse_ln_extension_fed_to_manga_degrades_gracefully() {
+        // `.epub` is an LN extension — manga parser should not match it,
+        // no panic, no fake extension.
+        let p = parse("Some LN Title v01.epub");
+        assert_eq!(p.extension, None);
+        assert_eq!(p.volume, Some(single(ch(1))));
+    }
+
+    #[test]
+    fn parse_ascii_garbage_no_panic() {
+        // Punctuation soup — no tokens beyond delimiters. Must not
+        // panic, must not claim spurious structured detections. Title
+        // may fall through as the raw slice since `.` is no longer
+        // trimmed by clean_title (preserved for `Neko.`-style titles).
+        let p = parse("...---...");
+        assert_eq!(p.volume, None);
+        assert_eq!(p.chapter, None);
+        assert_eq!(p.group, None);
+        assert_eq!(p.extension, None);
+    }
+
     // ----- extension -----
 
     #[test]
@@ -1202,6 +1244,123 @@ mod tests {
         assert_eq!(p.language, Some(Language::SimplifiedChinese));
     }
 
+    // ----- regressions -----
+    //
+    // Named tests for specific past fixes. Each fixture is also in the
+    // Kavita or Nyaa corpus, but a named unit test makes regressions
+    // surface with a legible failure (`test regression_umineko_hash
+    // failed` beats "1 of 325 corpus fixtures regressed"). Keep the
+    // input verbatim and comment the original issue.
+
+    /// 1.3.0: `v01-c001[MD]` — volume detection must NOT consume the
+    /// following chapter word as a range end, which would produce a
+    /// phantom `1-1` volume range. The `c001` word fails both bare-digit
+    /// and alpha-suffix parse in `parse_range_end`, so the range
+    /// correctly collapses to single-volume 1.
+    #[test]
+    fn regression_v01_c001_no_phantom_range() {
+        let p = parse("VanDread-v01-c001[MD].zip");
+        assert_eq!(p.volume, Some(single(ch(1))));
+        assert_eq!(p.chapter, Some(single(ch(1))));
+    }
+
+    /// 1.4.0: `Episode 3 - ... #02.cbz` — `#N` at end-of-filename
+    /// outranks the Episode keyword. Episode is a weak chapter marker
+    /// (section-style); #N is the canonical chapter syntax on
+    /// Shōnen-Jump-style releases.
+    #[test]
+    fn regression_umineko_hash_chapter_wins_over_episode() {
+        let p = parse("Umineko no Naku Koro ni - Episode 3 - Banquet of the Golden Witch #02.cbz");
+        assert_eq!(p.chapter, Some(single(ch(2))));
+    }
+
+    /// 1.4.0: `13회#2` — CJK marker must beat `#N` at end. Filenames
+    /// with explicit Korean/Japanese chapter markers are about THAT
+    /// number; a trailing `#N` is a sub-part indicator.
+    #[test]
+    fn regression_cjk_marker_beats_hash_chapter() {
+        let p = parse("자유록 13회#2");
+        assert_eq!(p.chapter, Some(single(ch(13))));
+    }
+
+    /// 1.4.0: `38-1화` — reverse-range CJK reads as "chapter 38 part 1"
+    /// (Kavita convention), not a literal 38..=1 range.
+    #[test]
+    fn regression_reverse_range_cjk_collapses_to_start() {
+        let p =
+            parse("이세계에서 고아원을 열었지만, 어째서인지 아무도 독립하려 하지 않는다 38-1화");
+        assert_eq!(p.chapter, Some(single(ch(38))));
+    }
+
+    /// 1.4.0: `c01-c04` — chapter range with matching prefix on both
+    /// ends. Volume detection keeps strict end-parsing (no c-prefix
+    /// end) so `v01-c001` doesn't regress.
+    #[test]
+    fn regression_mixed_prefix_chapter_range() {
+        let p = parse("Historys Strongest Disciple Kenichi c01-c04");
+        assert_eq!(p.chapter, Some(range(ch(1), ch(4))));
+    }
+
+    /// 1.4.0: `5 Том Test` — Russian `Том` accepts postfix position.
+    /// English `Vol` deliberately does not (would mis-pick trailing
+    /// title digits).
+    #[test]
+    fn regression_russian_tom_postfix() {
+        let p = parse("5 Том Test");
+        assert_eq!(p.volume, Some(single(ch(5))));
+    }
+
+    /// 1.4.0: trailing `.` on title preserved. Kavita keeps titles
+    /// like `Hentai Ouji to Warawanai Neko.` intact; the extension
+    /// dot is already stripped earlier so this dot is title content.
+    #[test]
+    fn regression_trailing_title_dot_preserved() {
+        let p = parse("Hentai Ouji to Warawanai Neko. - Vol. 06 Ch. 034.5");
+        assert_eq!(p.title.as_deref(), Some("Hentai Ouji to Warawanai Neko."));
+    }
+
+    /// 1.2.0: `시즌3` Korean multi-char volume prefix.
+    #[test]
+    fn regression_korean_sijeun_prefix() {
+        let p = parse("시즌34삽화2");
+        assert_eq!(p.volume, Some(single(ch(34))));
+    }
+
+    /// 1.2.0: `_153b` alpha-suffix decimal (Kavita convention: any
+    /// single alpha suffix = .5, not .1/.2 like Mihon).
+    #[test]
+    fn regression_beelzebub_alpha_suffix_decimal() {
+        let p = parse("Beelzebub_153b_RHS.zip");
+        assert_eq!(p.chapter, Some(single(ch_dec(153, 5))));
+    }
+
+    /// 1.3.0: `Kaiju No. 8 036` — bare-number heuristic disambiguation.
+    /// `8` is part of the title (followed by more text), `036` is the
+    /// chapter (followed by metadata in the tokens after).
+    #[test]
+    fn regression_kaiju_no_8_title_not_chapter() {
+        let p = parse("Kaiju No. 8 036 (2021) (Digital) (danke-Empire)");
+        assert_eq!(p.title.as_deref(), Some("Kaiju No. 8"));
+        assert_eq!(p.chapter, Some(single(ch(36))));
+    }
+
+    /// Backward-range rejection: `vol_356-1` cannot be a valid range.
+    /// Predates 1.0; pin it so a future refactor of `parse_range_end`
+    /// doesn't silently drop the guard.
+    #[test]
+    fn regression_backward_volume_range_rejected() {
+        let p = parse("Kaguya-sama Love Is War - vol_356-1");
+        assert_eq!(p.volume, Some(single(ch(356))));
+    }
+
+    /// 1.2.0: bracket-nested volume — `[Volume 11]` is NOT a group.
+    #[test]
+    fn regression_bracketed_volume_keyword_not_group() {
+        let p = parse("[xPearse] Kyochuu Rettou Volume 1 [English] [Manga] [Volume Scans]");
+        assert_eq!(p.group, Some("xPearse"));
+        assert_eq!(p.volume, Some(single(ch(1))));
+    }
+
     // ----- end-to-end -----
 
     #[test]
@@ -1355,5 +1514,97 @@ mod tests {
             None => n.whole.to_string(),
             Some(d) => format!("{}.{}", n.whole, d),
         }
+    }
+
+    /// Convert `ChapterNumber` to `f64` for comparison against Mihon
+    /// fixtures. Deliberately test-only — the public type avoids f64 on
+    /// purpose (precision footguns on `Ord`). `None` decimal → `N.0`.
+    fn chapter_to_f64(c: ChapterNumber) -> f64 {
+        match c.decimal {
+            None => f64::from(c.whole),
+            Some(d) => format!("{}.{d}", c.whole)
+                .parse()
+                .unwrap_or_else(|_| f64::from(c.whole)),
+        }
+    }
+
+    /// Corpus-driven chapter-number test against [Mihon]'s
+    /// `ChapterRecognitionTest` fixtures.
+    ///
+    /// Mihon (Tachiyomi successor) stores chapter numbers as `f64`; ours
+    /// are `ChapterNumber { whole, decimal }`. Whole-part equality is
+    /// the real signal — "did we find the right chapter." Decimal
+    /// equality is a weaker stat because the convention differs (Mihon:
+    /// `Ch.4.a` → 4.1; us: `Ch.4.a` → 4.5, per Kavita's convention).
+    /// Both stats are reported; only the whole-part floor is asserted.
+    ///
+    /// [Mihon]: https://github.com/mihonapp/mihon
+    #[test]
+    fn corpus_mihon_chapter_pass_rate() {
+        const CORPUS: &str = include_str!("../corpus/chapters_mihon.json");
+        let entries: Vec<serde_json::Value> = serde_json::from_str(CORPUS).unwrap();
+
+        let mut total = 0usize;
+        let mut detected = 0usize;
+        let mut whole_pass = 0usize;
+        let mut exact_pass = 0usize;
+        let mut failures: Vec<String> = Vec::new();
+
+        for entry in &entries {
+            let input = entry["input"].as_str().unwrap_or("");
+            let Some(want) = entry.get("expected_chapter_f64").and_then(|v| v.as_f64()) else {
+                continue;
+            };
+            total += 1;
+
+            let p = parse(input);
+            let Some(range) = p.chapter else {
+                if failures.len() < 5 {
+                    failures.push(format!("{input}  no chapter detected (want {want})"));
+                }
+                continue;
+            };
+            detected += 1;
+
+            let got = chapter_to_f64(range.start);
+            if got.floor() == want.floor() {
+                whole_pass += 1;
+            } else if failures.len() < 5 {
+                failures.push(format!("{input}  want={want} got={got}"));
+            }
+            if (got - want).abs() < 0.05 {
+                exact_pass += 1;
+            }
+        }
+
+        eprintln!("\n--- corpus_mihon_chapter_pass_rate ---");
+        eprintln!("detected:    {detected}/{total}");
+        eprintln!(
+            "whole-part:  {whole_pass}/{total} ({}/{} of detected)",
+            whole_pass, detected
+        );
+        eprintln!("exact:       {exact_pass}/{total}");
+        for f in &failures {
+            eprintln!("    FAIL: {f}");
+        }
+
+        // Two floors — detection coverage is intentionally lower than
+        // Mihon's (our bare-number heuristic is conservative to avoid
+        // picking title-embedded numbers like "Kaiju No. 8"); but when
+        // we DO detect a chapter, the whole-part should almost always
+        // match Mihon. Both floors set just below current measured to
+        // surface regressions without being adversarial.
+        let detected_rate = detected as f64 / total.max(1) as f64;
+        let accuracy = whole_pass as f64 / detected.max(1) as f64;
+        assert!(
+            detected_rate >= 0.50,
+            "Mihon chapter-detection rate {:.1}% below floor",
+            detected_rate * 100.0
+        );
+        assert!(
+            accuracy >= 0.80,
+            "Mihon whole-part accuracy {:.1}% below floor (of detected)",
+            accuracy * 100.0
+        );
     }
 }
