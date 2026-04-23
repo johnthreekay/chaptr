@@ -4,18 +4,26 @@
 //! Source-tag differences (Lezhin / Naver / Kakao for manhwa) are carried by
 //! [`MangaSource`], not by a separate module.
 //!
-//! **v0 scope** (this commit): extension, volume (single-token `v01` and
-//! multi-token `Vol 1` forms, with decimal `v03.5` and range `v01-09`),
-//! chapter (same patterns under `c`/`Ch`/`Chapter`), group (first non-volume
-//! bracketed token), source (`Digital`, `MangaPlus`).
+//! **v0 scope**: extension, volume (single-token `v01`, multi-token `Vol 1`,
+//! decimal `v03.5`, range `v01-09`, also `(v01)` and `[Volume 11]` nested
+//! forms), chapter (same prefixed patterns under `c`/`Ch`/`Chapter` plus
+//! revision-suffix `Chapter11v2` and a bare-number fallback for
+//! `Beelzebub_01_[Noodles].zip`-style filenames), group (first non-volume
+//! bracketed token), source (`Digital`, `MangaPlus`). Range validation
+//! rejects backward ranges (`vol_356-1` parses as 356, not 356-1).
+//!
+//! Season-style markers `S01` are handled as volume (Tower of God uses this
+//! convention); single-letter `s` only matches with following digits, so
+//! titles like "Sword" or "Spy" are safe.
 //!
 //! **Out of scope for v0** (intentional, documented gaps): title extraction,
-//! language tags, revision suffixes (`v2` after a chapter), oneshot detection,
-//! CJK volume markers (巻 / 卷 / 册), Cyrillic markers (Том / Глава), Korean
-//! markers (권 / 장), Mangapy `vol_356-1` syntax, `[Volume 11]` brackets,
-//! and the rest of `MangaSource` (Viz / Kodansha / Lezhin / Naver / Kakao).
-//! These come back as the corpus pass-rate test pushes them up the priority
-//! list.
+//! language tags, revision *extraction* (the suffix is consumed but not
+//! stored), oneshot detection, CJK volume markers (巻 / 卷 / 册), Cyrillic
+//! markers (Том / Глава), Korean markers (권 / 장), Thai markers (เล่ม),
+//! alpha-suffix decimal chapters (`Beelzebub_153b` = chapter 153.5),
+//! `c001-006x1`-style chapter ranges with extra suffixes, and the rest of
+//! `MangaSource` (Viz / Kodansha / Lezhin / Naver / Kakao). These come back
+//! as the corpus pass-rate test pushes them up the priority list.
 
 use crate::lexer::{Token, tokenize};
 use crate::{ChapterNumber, Language, NumberRange};
@@ -98,6 +106,28 @@ fn detect_extension(filename: &str) -> Option<&str> {
 }
 
 fn detect_volume(tokens: &[Token]) -> Option<NumberRange> {
+    // Pass 1: top-level. The vast majority of fixtures hit here.
+    if let Some(r) = detect_volume_in_seq(tokens) {
+        return Some(r);
+    }
+    // Pass 2: inside parens / brackets — captures `(v01)` and `[Volume 11]`
+    // shapes where the volume marker was wrapped in another token. Re-tokenize
+    // the inner content; the wrapped-once depth is enough for every corpus
+    // case observed so far (no `((v01))` style nesting in the wild).
+    for t in tokens {
+        let inner = match t {
+            Token::Parenthesized(s) | Token::Bracketed(s) => *s,
+            _ => continue,
+        };
+        let inner_tokens = tokenize(inner);
+        if let Some(r) = detect_volume_in_seq(&inner_tokens) {
+            return Some(r);
+        }
+    }
+    None
+}
+
+fn detect_volume_in_seq(tokens: &[Token]) -> Option<NumberRange> {
     for (i, t) in tokens.iter().enumerate() {
         let Token::Word(w) = t else { continue };
 
@@ -119,13 +149,33 @@ fn detect_volume(tokens: &[Token]) -> Option<NumberRange> {
 }
 
 fn detect_chapter(tokens: &[Token]) -> Option<NumberRange> {
+    // Pass 1: top-level prefixed forms (c042 / Ch.4 / Chapter 12 / Chapter11v2)
+    if let Some(r) = detect_chapter_in_seq(tokens) {
+        return Some(r);
+    }
+    // Pass 2: inside parens / brackets
+    for t in tokens {
+        let inner = match t {
+            Token::Parenthesized(s) | Token::Bracketed(s) => *s,
+            _ => continue,
+        };
+        let inner_tokens = tokenize(inner);
+        if let Some(r) = detect_chapter_in_seq(&inner_tokens) {
+            return Some(r);
+        }
+    }
+    // Pass 3: bare-number fallback for `Beelzebub_01_[Noodles].zip`,
+    // `Hinowa ga CRUSH! 018`, and similar where the chapter is just a
+    // number with no `c`/`Ch`/`Chapter` prefix.
+    detect_bare_number_chapter(tokens)
+}
+
+fn detect_chapter_in_seq(tokens: &[Token]) -> Option<NumberRange> {
     for (i, t) in tokens.iter().enumerate() {
         let Token::Word(w) = t else { continue };
 
-        // Single-token form: c001 / ch001 / chapter001
-        if let Some(num_str) = strip_chapter_prefix(w)
-            && let Ok(start_whole) = num_str.parse::<u32>()
-        {
+        // Single-token form: c001 / ch001 / chapter001 / chapter11v2 (revision suffix)
+        if let Some(start_whole) = parse_chapter_num_from_word(w) {
             return Some(build_range(tokens, i + 1, start_whole));
         }
 
@@ -137,6 +187,89 @@ fn detect_chapter(tokens: &[Token]) -> Option<NumberRange> {
         }
     }
     None
+}
+
+/// Parse a single Word as a chapter number with optional revision suffix.
+///
+/// Pattern: `<prefix><digits>[v<digits>]` where prefix is `chapter`/`ch`/`c`
+/// (case-insensitive). Examples: `c042`, `Ch11v2`, `Chapter51v2`.
+///
+/// The revision component is silently consumed but not returned — `revision`
+/// extraction is not in v0 scope. The point is to recognize that `Chapter11v2`
+/// is chapter 11 (with revision 2) rather than treating it as malformed.
+fn parse_chapter_num_from_word(word: &str) -> Option<u32> {
+    // `chp` covers `vol01_chp02`-style filenames; tried before `ch` so it
+    // matches "chp02" as prefix "chp" + digits "02" rather than "ch" + "p02".
+    for prefix in ["chapter", "chp", "ch", "c"] {
+        let Some(rest) = strip_prefix_ignore_ascii_case(word, prefix) else {
+            continue;
+        };
+        let digits_end = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if digits_end == 0 {
+            continue;
+        }
+        let Ok(num) = rest[..digits_end].parse::<u32>() else {
+            continue;
+        };
+        let after = &rest[digits_end..];
+        if after.is_empty() {
+            return Some(num);
+        }
+        // Optional `v<digits>` revision suffix
+        if let Some(rev_part) = strip_prefix_ignore_ascii_case(after, "v")
+            && !rev_part.is_empty()
+            && rev_part.chars().all(|c| c.is_ascii_digit())
+        {
+            return Some(num);
+        }
+    }
+    None
+}
+
+/// Find an isolated all-digit Word that's plausibly a chapter number.
+///
+/// Heuristics, all required:
+/// - Must come *after* at least one non-numeric Word (skips `100 Years Of Solitude`)
+/// - Must not be year-shaped (1900-2099) — those are almost never chapter numbers
+/// - Must not be immediately preceded by `Vol`/`Volume` keyword (skips the
+///   number that belongs to the volume marker, e.g. the `5` in `Vol 5`)
+/// - Combined-token volume markers like `v05` do *not* block a following bare
+///   number — `v05 042` should yield chapter 42, not nothing
+///
+/// First match wins. Returns `None` if no match.
+fn detect_bare_number_chapter(tokens: &[Token]) -> Option<NumberRange> {
+    let mut saw_non_numeric_word = false;
+    let mut prev_was_vol_keyword = false;
+
+    for (i, t) in tokens.iter().enumerate() {
+        match t {
+            Token::Word(w) => {
+                let all_digits = w.chars().all(|c| c.is_ascii_digit());
+                if all_digits
+                    && saw_non_numeric_word
+                    && !prev_was_vol_keyword
+                    && let Ok(n) = w.parse::<u32>()
+                    && !looks_like_year(n)
+                {
+                    return Some(build_range(tokens, i + 1, n));
+                }
+                if !all_digits {
+                    saw_non_numeric_word = true;
+                }
+                // Only the multi-token `Vol`/`Volume` keyword blocks the next
+                // number; combined-token forms like `v05` already absorbed
+                // their number into the same Word.
+                prev_was_vol_keyword = eq_ignore_ascii_case_any(w, &["vol", "volume"]);
+            }
+            Token::Delimiter(_) => {} // delimiters don't reset prev_was_vol_keyword
+            _ => prev_was_vol_keyword = false,
+        }
+    }
+    None
+}
+
+fn looks_like_year(n: u32) -> bool {
+    (1900..=2099).contains(&n)
 }
 
 /// Build a [`NumberRange`] starting at `start_whole`, then optionally consume
@@ -151,7 +284,7 @@ fn build_range(tokens: &[Token], cursor: usize, start_whole: u32) -> NumberRange
         next = after;
     }
 
-    let end = parse_range_end(tokens, next);
+    let end = parse_range_end(tokens, next, start);
     NumberRange { start, end }
 }
 
@@ -189,7 +322,7 @@ fn parse_decimal_suffix(tokens: &[Token], pos: usize) -> Option<(u16, usize)> {
     Some((dec, pos + 2))
 }
 
-fn parse_range_end(tokens: &[Token], pos: usize) -> Option<ChapterNumber> {
+fn parse_range_end(tokens: &[Token], pos: usize, start: ChapterNumber) -> Option<ChapterNumber> {
     if !matches!(tokens.get(pos), Some(Token::Delimiter('-'))) {
         return None;
     }
@@ -200,6 +333,12 @@ fn parse_range_end(tokens: &[Token], pos: usize) -> Option<ChapterNumber> {
     let mut end = ChapterNumber::new(end_whole);
     if let Some((dec, _)) = parse_decimal_suffix(tokens, pos + 2) {
         end = ChapterNumber::with_decimal(end_whole, dec);
+    }
+    // Reject backward ranges (vol_356-1 → not 356-1, just 356). Any pair where
+    // end < start is far more likely to be the Mangapy `<vol>-<part>` syntax
+    // than a real range.
+    if end < start {
+        return None;
     }
     Some(end)
 }
@@ -243,19 +382,9 @@ fn detect_source(tokens: &[Token]) -> Option<MangaSource> {
 
 fn strip_volume_prefix(word: &str) -> Option<&str> {
     // Order matters: longer prefixes first so "volume" beats "vol" beats "v".
-    for prefix in ["volume", "vol", "v"] {
-        if let Some(rest) = strip_prefix_ignore_ascii_case(word, prefix)
-            && !rest.is_empty()
-            && rest.chars().all(|c| c.is_ascii_digit())
-        {
-            return Some(rest);
-        }
-    }
-    None
-}
-
-fn strip_chapter_prefix(word: &str) -> Option<&str> {
-    for prefix in ["chapter", "ch", "c"] {
+    // `s` covers season-style markers (`S01` → volume 1) for series like
+    // Tower Of God; only matches `s\d+`, so titles like "Sword" / "Spy" are safe.
+    for prefix in ["volume", "vol", "v", "s"] {
         if let Some(rest) = strip_prefix_ignore_ascii_case(word, prefix)
             && !rest.is_empty()
             && rest.chars().all(|c| c.is_ascii_digit())
@@ -480,6 +609,95 @@ mod tests {
         assert_eq!(p.extension, None); // .epub is LN-side
     }
 
+    // ----- v1 additions -----
+
+    #[test]
+    fn volume_in_parens() {
+        // (v01) form — the volume marker is wrapped in parens, not at top level.
+        let p = parse("Gokukoku no Brynhildr - c001-008 (v01) [TrinityBAKumA]");
+        assert_eq!(p.volume, Some(single(ch(1))));
+    }
+
+    #[test]
+    fn volume_in_brackets() {
+        // [Volume 11] — volume marker wrapped in brackets.
+        assert_eq!(
+            parse("Tonikaku Cawaii [Volume 11].cbz").volume,
+            Some(single(ch(11)))
+        );
+    }
+
+    #[test]
+    fn volume_season_prefix_s01() {
+        // Tower-of-God-style S01 = season 1 = volume 1.
+        let p = parse("Tower Of God S01 014.cbz");
+        assert_eq!(p.volume, Some(single(ch(1))));
+    }
+
+    #[test]
+    fn chapter_revision_suffix_chapter_n_v_n() {
+        // `Chapter11v2` = chapter 11 (revision 2). Revision is silently
+        // consumed — extracting it into ParsedManga.revision is v2+ scope.
+        assert_eq!(
+            parse("Yumekui-Merry_DKThias_Chapter11v2.zip").chapter,
+            Some(single(ch(11)))
+        );
+        assert_eq!(parse("Title c042v2.zip").chapter, Some(single(ch(42))));
+    }
+
+    #[test]
+    fn chapter_chp_prefix() {
+        // `vol01_chp02` — `chp` is a third common chapter prefix.
+        assert_eq!(
+            parse("[Hidoi]_Amaenaideyo_MS_vol01_chp02.rar").chapter,
+            Some(single(ch(2)))
+        );
+    }
+
+    #[test]
+    fn chapter_bare_number_after_title() {
+        // No `c`/`Ch`/`Chapter` prefix — just an isolated number after title words.
+        assert_eq!(
+            parse("Hinowa ga CRUSH! 018 (2019) (Digital).cbz").chapter,
+            Some(single(ch(18)))
+        );
+        assert_eq!(
+            parse("Beelzebub_01_[Noodles].zip").chapter,
+            Some(single(ch(1)))
+        );
+    }
+
+    #[test]
+    fn chapter_bare_number_skips_year() {
+        // 1900-2099 are excluded; otherwise `Title (2019)` would give chapter 2019.
+        // Year inside parens is already invisible (we don't look in parens for
+        // bare numbers), but a year at top-level shouldn't trip us either.
+        assert_eq!(parse("Title 2019 Edition").chapter, None);
+    }
+
+    #[test]
+    fn chapter_bare_number_skips_leading_numeric_title() {
+        // First Word can't be the chapter — it's the title's first word.
+        assert_eq!(parse("100 Years Of Solitude").chapter, None);
+    }
+
+    #[test]
+    fn chapter_bare_number_skips_after_vol_keyword() {
+        // The `5` after `Vol` belongs to the volume marker, not the chapter.
+        // Combined-token forms like `v05 042` should NOT block the 042 though
+        // (the 5 was already absorbed into v05).
+        let p = parse("Series Vol 5 - 042");
+        assert_eq!(p.volume, Some(single(ch(5))));
+        assert_eq!(p.chapter, Some(single(ch(42))));
+    }
+
+    #[test]
+    fn range_rejects_backward_end() {
+        // Mangapy `vol_356-1` syntax — the `-1` isn't a range end (1 < 356).
+        // Should parse as just 356.
+        assert_eq!(parse("vol_356-1").volume, Some(single(ch(356))));
+    }
+
     // ----- corpus -----
 
     /// Run `parse()` against every Kavita fixture and report per-method pass
@@ -490,10 +708,11 @@ mod tests {
     #[test]
     fn corpus_kavita_pass_rate() {
         const CORPUS: &str = include_str!("../corpus/manga_kavita.json");
-        // v0 hits ~56% out of the gate. Threshold is set just below current
-        // measured rate so a real regression surfaces here, not a 5pp drop
-        // from edge-case work. Raise as the parser improves.
-        const MIN_AGGREGATE_PASS_RATE: f64 = 0.50;
+        // After v1 (nested-paren, bare-number, revision-suffix, range
+        // validation, `chp`/`s` prefixes) we hit ~74%. Threshold is set just
+        // below current measured rate so a real regression surfaces here,
+        // not a few-pp drop from edge-case work. Raise as the parser improves.
+        const MIN_AGGREGATE_PASS_RATE: f64 = 0.70;
 
         let entries: Vec<serde_json::Value> = serde_json::from_str(CORPUS).unwrap();
 
