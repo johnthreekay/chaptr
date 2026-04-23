@@ -32,6 +32,11 @@ use crate::tables;
 use crate::{Language, NumberRange};
 
 /// Structured fields parsed from a single light-novel filename.
+///
+/// `#[non_exhaustive]` so additions to the LN model (year ranges,
+/// language, a structured source-type field) can land in a minor version
+/// instead of forcing a semver-major bump.
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParsedNovel<'a> {
     pub title: Option<Cow<'a, str>>,

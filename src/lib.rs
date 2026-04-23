@@ -85,6 +85,10 @@ impl NumberRange {
 /// Intentionally narrow — only languages observed in the corpus get variants. Add as
 /// the corpus grows; do not pre-populate from ISO-639 since most entries would never
 /// appear in practice.
+///
+/// `#[non_exhaustive]` so new variants can be added in minor versions.
+/// Consumers matching on this enum need a `_ =>` fallback arm.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Language {
     English,

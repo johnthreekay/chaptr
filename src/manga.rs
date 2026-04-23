@@ -42,6 +42,11 @@ use crate::{Language, NumberRange};
 /// field is a `Cow` because Kavita-style normalization replaces `_` with ` `
 /// (`B_Gata_H_Kei` → `"B Gata H Kei"`) — we borrow the original slice when
 /// no replacement is needed, and only allocate when it is.
+///
+/// Marked `#[non_exhaustive]` so that additions to the parse model (a
+/// dedicated `year` field, a richer revision type, etc.) can land in a
+/// minor version instead of forcing a semver-major bump.
+#[non_exhaustive]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ParsedManga<'a> {
     pub title: Option<Cow<'a, str>>,
@@ -66,6 +71,11 @@ pub struct ParsedManga<'a> {
 }
 
 /// Origin of the scanned/digital source.
+///
+/// `#[non_exhaustive]` so new sources (e.g. Piccoma, Webtoon English,
+/// Sh&ouml;nen Jump app) can be added without a semver-major bump.
+/// Consumers matching on this enum need a `_ =>` fallback arm.
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MangaSource {
     /// `(Digital)` tag — generic digital release, unspecified retailer.
