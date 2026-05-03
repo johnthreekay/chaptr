@@ -163,8 +163,20 @@ Requires Rust 1.95+ (edition 2024). No native dependencies, no build script.
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE).
+Licensed under either of
 
-Test corpus entries under `corpus/` are lifted with attribution from:
-- [Kavita](https://github.com/Kareadita/Kavita) (GPL-3.0)
-- [Mihon](https://github.com/mihonapp/mihon) (Apache-2.0, see [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt))
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+
+### Test corpus
+
+Filename strings under `corpus/` are lifted with attribution from upstream sources and carry their own licenses, separate from chaptr's MIT/Apache-2.0:
+
+- [Kavita](https://github.com/Kareadita/Kavita) (GPL-3.0). Used only as test data; the test harness reads `corpus/manga_kavita.json` to validate parses but no Kavita code is linked into the chaptr crate. If GPL-tainted test data is a concern for your downstream use, exclude `corpus/` from your build.
+- [Mihon](https://github.com/mihonapp/mihon) (Apache-2.0; same text as [LICENSE-APACHE](LICENSE-APACHE)).
